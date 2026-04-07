@@ -44,7 +44,11 @@ app.add_middleware(
 
 # --- Data Models ---
 
-class DialogueTurn(BaseModel):
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class DialogueTurn(BaseModel) :
     role: str  # "Doctor" or "Patient"
     original_text: str
     translated_text: str
@@ -145,6 +149,16 @@ async def list_sessions():
     List all active/stored sessions.
     """
     return list(sessions_db.values())
+
+@app.post("/login")
+async def login(req: LoginRequest):
+    """
+    Simple login check for test/test123.
+    """
+    if req.username == "test" and req.password == "test123":
+        return {"status": "success", "message": "Login successful", "token": "dummy-token-123"}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
 
 
 # ──────────────────────────────────────────────

@@ -5,3 +5,6 @@ python-multipart
 mysql-connector-python
 python-dotenv
 httpx
+pandas
+numpy
+ipython
