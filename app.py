@@ -295,7 +295,7 @@ async def translate(req: TranslateRequest):
             ) as response:
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
-                        data_str = line.replace("data: ", "").trim()
+                        data_str = line.replace("data: ", "").strip()
                         if data_str == "[DONE]":
                             yield line + "\n\n"
                             continue
