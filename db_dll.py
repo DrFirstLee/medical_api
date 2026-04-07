@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # DB 접속 정보 설정
-DB_HOST = os.getenv("MYSQL_HOST", "localhost")
+DB_HOST = os.getenv("MYSQL_HOST", "db")  # Docker 실행 시 'db' 컨테이너 호스트명 사용
 DB_USER = os.getenv("MYSQL_USER")
 DB_PASSWORD = os.getenv("MYSQL_PASSWORD")
 DB_NAME = os.getenv("MYSQL_DATABASE")
