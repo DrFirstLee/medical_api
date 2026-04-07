@@ -4,3 +4,4 @@ pydantic
 python-multipart
 mysql-connector-python
 python-dotenv
+httpx
