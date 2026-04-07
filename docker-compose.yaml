@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  fastapi_app:
+    build: .
+    container_name: fastapi_server
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    restart: always
+
+  # [서비스용] 무료 랜덤 도메인 사용 (trycloudflare.com)
+  tunnel_api:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://fastapi_app:8000
+    restart: always
+
+  # [관리용] 윈도우 SSH용 고정 도메인 적용 (medical.naranja.my)
+  tunnel_ssh:
+    image: cloudflare/cloudflared:latest
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    # host.docker.internal은 윈도우 호스트(레노버 PC)를 가리킴
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
