@@ -9,20 +9,30 @@ services:
     working_dir: /app
     command: uvicorn app:app --host 0.0.0.0 --port 8000
     restart: always
+    depends_on:
+      - db
 
   # [서비스용] 무료 랜덤 도메인 사용 (trycloudflare.com)
   tunnel_api:
     image: cloudflare/cloudflared:latest
+    container_name: tunnel_server
     command: tunnel --no-autoupdate --url http://fastapi_app:8000
     restart: always
 
-  # [관리용] 윈도우 SSH용 고정 도메인 적용 (medical.naranja.my)
-  tunnel_ssh:
-    image: cloudflare/cloudflared:latest
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    # host.docker.internal은 윈도우 호스트(레노버 PC)를 가리킴
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # [데이터베이스] API용 전용 MySQL 설정
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
     restart: always
+    # ports 설정을 하지 않아 외부 접근이 차단되며, 동일 네트워크(fastapi_app)에서만 접속 가능합니다.
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      # 도커가 꺼져도 현재 폴더의 db_data 폴더에 데이터가 파일로 보존됩니다.
+      - ./db_data:/var/lib/mysql
+
+volumes:
+  db_data:

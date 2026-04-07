@@ -4,6 +4,18 @@ from pydantic import BaseModel
 from typing import List, Optional
 import datetime
 import uvicorn
+import os
+import mysql.connector
+from dotenv import load_dotenv
+
+# .env 파일이 있으면 로드 (로컬 환경 지원)
+load_dotenv()
+
+# DB 접속 정보 (docker-compose의 환경 변수 및 .env에서 로드)
+DB_HOST = os.getenv("MYSQL_HOST", "db")
+DB_USER = os.getenv("MYSQL_USER")
+DB_PASSWORD = os.getenv("MYSQL_PASSWORD")
+DB_NAME = os.getenv("MYSQL_DATABASE")
 
 app = FastAPI(
     title="Swift Medical API",
@@ -51,6 +63,38 @@ async def health_check():
         "service": "Swift Medical API",
         "timestamp": datetime.datetime.now().isoformat()
     }
+
+@app.get("/db-test")
+async def db_test():
+    """
+    Test the connection to the MySQL database.
+    """
+    try:
+        # DB 연결 시도
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            connect_timeout=5
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            cursor.close()
+            connection.close()
+            return {
+                "status": "connected",
+                "message": f"Successfully connected to {DB_NAME} at {DB_HOST}",
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.datetime.now().isoformat()
+        }
 
 @app.post("/sessions", response_model=ConsultationSession)
 async def create_session(doctor_lang: str, patient_lang: str):
