@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  fastapi_app:
+  swift_fastapi_app:
     build: .
-    container_name: fastapi_server
+    container_name: swift_fastapi_server
     volumes:
       - .:/app
     working_dir: /app
@@ -12,11 +12,13 @@ services:
     depends_on:
       - db
 
-  # [서비스용] 무료 랜덤 도메인 사용 (trycloudflare.com)
+  # [서비스용] 정식 도메인 연결 (swift-api.naranja.my)
   tunnel_api:
     image: cloudflare/cloudflared:latest
     container_name: tunnel_server
-    command: tunnel --no-autoupdate --url http://fastapi_app:8000
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     restart: always
 
   # [데이터베이스] API용 전용 MySQL 설정
@@ -24,7 +26,7 @@ services:
     image: mysql:8.0
     container_name: mysql_db
     restart: always
-    # ports 설정을 하지 않아 외부 접근이 차단되며, 동일 네트워크(fastapi_app)에서만 접속 가능합니다.
+    # ports 설정을 하지 않아 외부 접근이 차단되며, 동일 네트워크(swift_fastapi_app)에서만 접속 가능합니다.
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
