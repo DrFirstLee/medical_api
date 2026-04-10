@@ -202,6 +202,7 @@ async def speech_to_text(file: UploadFile = File(...)):
         db_log_token_usage(res_json["usage"], STT_MODEL, filename=filename, task="stt",
                            output_text=stt_text)
     
+    print(f"DEBUG: STT response JSON: {res_json}")
     return res_json
 
 
@@ -262,7 +263,8 @@ async def identify_speaker(req: IdentifySpeakerRequest):
     if "usage" in data:
         db_log_token_usage(data["usage"], LLM_MODEL, task="identify_speaker",
                            input_text=req.text, output_text=role_content)
-        
+    
+    print(f"DEBUG: Identify Speaker result: {role_json}")
     return role_json
 
 
@@ -317,6 +319,7 @@ async def translate(req: TranslateRequest):
                     if line.startswith("data: "):
                         data_str = line.replace("data: ", "").strip()
                         if data_str == "[DONE]":
+                            print(f"DEBUG: Translation full output: {full_output}")
                             yield line + "\n\n"
                             continue
                         
