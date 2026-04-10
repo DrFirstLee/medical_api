@@ -26,7 +26,8 @@ services:
     image: mysql:8.0
     container_name: mysql_db
     restart: always
-    # ports 설정을 하지 않아 외부 접근이 차단되며, 동일 네트워크(swift_fastapi_app)에서만 접속 가능합니다.
+    ports:
+      - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
