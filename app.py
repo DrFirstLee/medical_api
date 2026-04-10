@@ -32,14 +32,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS setting for frontend interaction
-# Adjust allow_origins for production environment
+# 허용할 오리진 목록
+origins = [
+    "https://translate.swiftmedicalclinic.com",
+    "http://localhost:3000", # 로컬 테스트용이 있다면 추가
+    "https://swift-translate-real.netlify.app/"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,            # 특정 도메인만 허용 (보안상 추천)
+    # allow_origins=["*"],            # 모든 도메인 허용 시 사용
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],              # 모든 HTTP 메서드(POST, GET 등) 허용
+    allow_headers=["*"],              # 모든 헤더 허용
 )
 
 # --- Data Models ---

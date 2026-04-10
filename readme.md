@@ -33,7 +33,7 @@ docker logs tunnel_server
 fastapi 로그보기
 
 ```bash
-docker logs fastapi_server
+ docker logs -f swift_fastapi_server
 ```
 
 fastapi 서버에들어가기
