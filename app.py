@@ -92,8 +92,8 @@ app = FastAPI(
     title="Swift Medical API",
     description="Real-time Bilingual Medical Consultation Backend",
     version="1.0.0",
-    docs_url=None,   # 커스텀 인증을 위해 기본 경로 비활성화
-    redoc_url=None
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # 허용할 오리진 목록
@@ -198,30 +198,8 @@ async def home():
     """
     return FileResponse("templates/main.html")
 # ──────────────────────────────────────────────
-# Documentation Authentication (Basic Auth)
+# Health & Status Endpoints
 # ──────────────────────────────────────────────
-
-security = HTTPBasic()
-
-def authenticate_docs(credentials: HTTPBasicCredentials = Depends(security)):
-    """Docs 접속 시 .env의 ID/PW로 인증"""
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_ID or "")
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PW or "")
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-@app.get("/docs", include_in_schema=False)
-async def get_documentation():
-    return get_swagger_ui_html(openapi_url=app.openapi_url, title=app.title + " - Swagger UI")
-
-@app.get("/redoc", include_in_schema=False)
-async def get_redoc_documentation():
-    return get_redoc_html(openapi_url=app.openapi_url, title=app.title + " - ReDoc")
 
 
 @app.get("/health_check")
