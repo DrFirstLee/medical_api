@@ -8,3 +8,7 @@ httpx
 pandas
 numpy
 ipython
+sqlalchemy
+pymysql
+sqladmin
+itsdangerous
