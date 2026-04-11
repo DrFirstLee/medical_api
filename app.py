@@ -10,6 +10,7 @@ import datetime
 import uvicorn
 import os
 import json
+import re
 import hashlib
 import secrets
 import httpx
@@ -107,11 +108,28 @@ origins = [
 @app.middleware("http")
 async def allow_iframe_middleware(request: Request, call_next):
     response = await call_next(request)
-    # 특정 도메인에서의 iframe 삽입 허용 (CSP 설정)
+    # 1. iframe 허용: X-Frame-Options 제거 및 CSP 설정
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://translate.swiftmedicalclinic.com"
-    # X-Frame-Options 헤더가 SAMEORIGIN으로 설정되어 있으면 차단되므로 제거
     if "X-Frame-Options" in response.headers:
         del response.headers["X-Frame-Options"]
+
+    # 2. Cross-domain iframe에서 세션 쿠키가 동작하도록 SameSite=None; Secure 설정
+    #    (다른 도메인의 iframe 안에서는 쿠키가 제3자 쿠키로 취급되어 기본적으로 차단됨)
+    raw_headers = response.raw_headers
+    for i in range(len(raw_headers)):
+        name, value = raw_headers[i]
+        if name.lower() == b"set-cookie":
+            cookie_str = value.decode()
+            # SameSite 속성을 None으로 변경 (cross-site 허용)
+            if "samesite" in cookie_str.lower():
+                cookie_str = re.sub(r'(?i)samesite=\w+', 'SameSite=None', cookie_str)
+            else:
+                cookie_str += "; SameSite=None"
+            # Secure 속성 추가 (SameSite=None 사용 시 필수)
+            if "secure" not in cookie_str.lower():
+                cookie_str += "; Secure"
+            raw_headers[i] = (name, cookie_str.encode())
+
     return response
 
 app.add_middleware(
