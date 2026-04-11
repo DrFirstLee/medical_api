@@ -12,3 +12,4 @@ sqlalchemy
 pymysql
 sqladmin
 itsdangerous
+cryptography
