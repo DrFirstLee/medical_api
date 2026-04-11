@@ -441,16 +441,14 @@ class TranslateRequest(BaseModel):
 @app.post("/translate")
 async def translate(req: TranslateRequest):
     """
-    의사-환자 간 의료 번역 (SSE 스트리밍).
-    doctor_lang ↔ patient_lang 사이 자동 번역을 수행합니다.
+    의사-환자 간 의료 번역 (일반 응답 방식).
+    번역이 완료될 때까지 기다린 후 최종 결과를 반환합니다.
     """
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI API key not configured")
 
     payload = {
         "model": LLM_MODEL,
-        "stream": True,
-        "stream_options": {"include_usage": True},  # 스트리밍 시 사용량 포함 설정
         "messages": [
             {
                 "role": "system",
@@ -463,43 +461,29 @@ async def translate(req: TranslateRequest):
         ],
     }
 
-    async def event_generator():
-        full_output = ""  # 스트리밍 번역 결과 누적
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream(
-                "POST",
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                },
-                json=payload,
-            ) as response:
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line.replace("data: ", "").strip()
-                        if data_str == "[DONE]":
-                            print(f"DEBUG: Translation full output: {full_output}")
-                            yield line + "\n\n"
-                            continue
-                        
-                        try:
-                            json_data = json.loads(data_str)
-                            # 스트리밍 콘텐츠 누적
-                            delta_content = json_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                            if delta_content:
-                                full_output += delta_content
-                            
-                            # 스트리밍 마지막에 오는 usage 정보 감지 및 기록
-                            if "usage" in json_data and json_data["usage"] is not None:
-                                db_log_token_usage(json_data["usage"], LLM_MODEL, task="translate_stream",
-                                                   input_text=req.text, output_text=full_output)
-                        except:
-                            pass
-                        
-                        yield line + "\n\n"
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            },
+            json=payload,
+        )
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+
+    data = response.json()
+    translated_text = data["choices"][0]["message"]["content"]
+
+    # 토큰 사용량 기록
+    if "usage" in data:
+        db_log_token_usage(data["usage"], LLM_MODEL, task="translate",
+                           input_text=req.text, output_text=translated_text)
+        print(f"DEBUG: Translation usage logged. Total: {data['usage'].get('total_tokens')}")
+
+    return {"translated_text": translated_text}
 
 
 
