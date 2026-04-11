@@ -8,6 +8,8 @@ services:
       - .:/app
     working_dir: /app
     command: uvicorn app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
+    environment:
+      - TZ=America/Calgary
     restart: always
     depends_on:
       - db
@@ -33,6 +35,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: America/Calgary
     volumes:
       # 도커가 꺼져도 현재 폴더의 db_data 폴더에 데이터가 파일로 보존됩니다.
       - ./db_data:/var/lib/mysql
