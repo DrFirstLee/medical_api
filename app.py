@@ -379,53 +379,51 @@ class IdentifySpeakerRequest(BaseModel):
 @app.post("/identify-speaker")
 async def identify_speaker(req: IdentifySpeakerRequest):
     """
-    텍스트를 분석하여 화자가 의사(Doctor)인지 환자(Patient)인지 판별.
-    의사 언어와 환자 언어 정보를 기반으로 LLM이 판단합니다.
+    텍스트의 언어를 자동 감지하여 화자(Doctor/Patient)를 판별합니다.
+    API 호출 없이 langdetect 라이브러리를 사용합니다.
     """
-    if not OPENAI_API_KEY:
-        raise HTTPException(status_code=500, detail="OPENAI API key not configured")
+    from langdetect import detect, LangDetectException
 
-    payload = {
-        "model": LLM_MODEL,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    f"Identify speaker. Doctor speaks {req.doctor_lang}, "
-                    f"Patient speaks {req.patient_lang}. "
-                    'Respond JSON: {"role": "Doctor" or "Patient"}'
-                ),
-            },
-            {"role": "user", "content": req.text},
-        ],
-        "response_format": {"type": "json_object"},
+    # 언어명 → langdetect 코드 매핑
+    LANG_MAP = {
+        "english":    ["en"],
+        "korean":     ["ko"],
+        "japanese":   ["ja"],
+        "mandarin":   ["zh-cn", "zh-tw", "zh"],
+        "cantonese":  ["zh-cn", "zh-tw", "zh"],
+        "hindi":      ["hi"],
+        "spanish":    ["es"],
+        "french":     ["fr"],
+        "german":     ["de"],
+        "arabic":     ["ar"],
+        "portuguese": ["pt"],
+        "russian":    ["ru"],
+        "vietnamese": ["vi"],
+        "thai":       ["th"],
+        "indonesian": ["id"],
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-            },
-            json=payload,
-        )
+    try:
+        detected_code = detect(req.text).lower()
+    except LangDetectException:
+        detected_code = ""
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+    doctor_codes  = LANG_MAP.get(req.doctor_lang.lower(),  [req.doctor_lang.lower()])
+    patient_codes = LANG_MAP.get(req.patient_lang.lower(), [req.patient_lang.lower()])
 
-    data = response.json()
-    
-    role_content = data["choices"][0]["message"]["content"]
-    role_json = json.loads(role_content)
-    
-    # 토큰 사용량 기록
-    if "usage" in data:
-        db_log_token_usage(data["usage"], LLM_MODEL, task="identify_speaker",
-                           input_text=req.text, output_text=role_content)
-    
-    print(f"DEBUG: Identify Speaker result: {role_json}")
-    return role_json
+    doctor_match  = any(detected_code.startswith(c) for c in doctor_codes)
+    patient_match = any(detected_code.startswith(c) for c in patient_codes)
+
+    if doctor_match and not patient_match:
+        role = "Doctor"
+    elif patient_match and not doctor_match:
+        role = "Patient"
+    else:
+        # 구분 불가 시 기본값: Doctor
+        role = "Doctor"
+
+    print(f"DEBUG: Detected lang='{detected_code}', role='{role}'")
+    return {"role": role}
 
 
 # ──────────────────────────────────────────────
