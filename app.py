@@ -154,12 +154,16 @@ class TokenUsageLogAdmin(ModelView, model=TokenUsageLog):
     name_plural = "Token Usage Logs"
     icon = "fa-solid fa-chart-bar"
     column_list = [
-        TokenUsageLog.id, TokenUsageLog.timestamp, TokenUsageLog.filename,
+        TokenUsageLog.timestamp, 
         TokenUsageLog.task, TokenUsageLog.model,
-        TokenUsageLog.input_tokens, TokenUsageLog.cached_tokens,
+        TokenUsageLog.input_tokens,
         TokenUsageLog.output_tokens, TokenUsageLog.total_tokens,
+        TokenUsageLog.input_text, TokenUsageLog.output_text,
     ]
-    column_searchable_list = [TokenUsageLog.filename, TokenUsageLog.task, TokenUsageLog.model]
+    column_searchable_list = [
+        TokenUsageLog.task, TokenUsageLog.model,
+        TokenUsageLog.input_text, TokenUsageLog.output_text
+    ]
     column_sortable_list = [
         TokenUsageLog.id, TokenUsageLog.timestamp, TokenUsageLog.task,
         TokenUsageLog.model, TokenUsageLog.total_tokens,
