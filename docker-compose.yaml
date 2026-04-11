@@ -36,6 +36,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: America/Calgary
+    command: --default-time-zone=America/Calgary
     volumes:
       # 도커가 꺼져도 현재 폴더의 db_data 폴더에 데이터가 파일로 보존됩니다.
       - ./db_data:/var/lib/mysql
