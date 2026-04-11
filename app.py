@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Depends, Cookie, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.proxy_headers import ProxyHeadersMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials
