@@ -451,8 +451,10 @@ async def translate(req: TranslateRequest):
             {
                 "role": "system",
                 "content": (
-                    f"Medical machine translator. Translate between "
-                    f"{req.doctor_lang} and {req.patient_lang}. Output ONLY translation."
+                    f"You are an ultra-fast medical translator. "
+                    f"Translate between {req.doctor_lang} and {req.patient_lang}. "
+                    f"Output ONLY the translation. No explanations, no notes, no punctuation changes. "
+                    f"Be as fast and concise as possible."
                 ),
             },
             {"role": "user", "content": req.text},
