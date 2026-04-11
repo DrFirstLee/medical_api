@@ -107,6 +107,17 @@ origins = [
 # ProxyHeadersMiddleware 추가 (리버스 프록시/터널 뒤에서 HTTPS 리다이렉트 원활하게 처리)
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
+# 다른 도메인(translate.swiftmedicalclinic.com)에서 iframe으로 삽입할 수 있도록 허용하는 미들웨어
+@app.middleware("http")
+async def allow_iframe_middleware(request: Request, call_next):
+    response = await call_next(request)
+    # 특정 도메인에서의 iframe 삽입 허용 (CSP 설정)
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://translate.swiftmedicalclinic.com"
+    # X-Frame-Options 헤더가 SAMEORIGIN으로 설정되어 있으면 차단되므로 제거
+    if "X-Frame-Options" in response.headers:
+        del response.headers["X-Frame-Options"]
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,            # 특정 도메인만 허용 (보안상 추천)
