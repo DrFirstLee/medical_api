@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Depends, Cookie, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.proxy_headers import ProxyHeadersMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials
@@ -102,6 +103,9 @@ origins = [
     "http://localhost:3000", # 로컬 테스트용이 있다면 추가
     "https://swift-translate-real.netlify.app/"
 ]
+
+# ProxyHeadersMiddleware 추가 (리버스 프록시/터널 뒤에서 HTTPS 리다이렉트 원활하게 처리)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 app.add_middleware(
     CORSMiddleware,
