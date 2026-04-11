@@ -10,7 +10,6 @@ import datetime
 import uvicorn
 import os
 import json
-import re
 import hashlib
 import secrets
 import httpx
@@ -40,6 +39,7 @@ ADMIN_PW = os.getenv("FASTAPI_PW")
 # OpenAI API 설정
 OPENAI_API_KEY = os.getenv("OPENAPI_KEY", "")
 LLM_MODEL = "gpt-4.1-nano-2025-04-14"
+LLM_MODEL_2 = "gpt-5.4-nano-2026-03-17"
 STT_MODEL = "gpt-4o-transcribe"
 
 # SQLAlchemy 엔진 생성 (SQLAdmin용)
@@ -108,28 +108,10 @@ origins = [
 @app.middleware("http")
 async def allow_iframe_middleware(request: Request, call_next):
     response = await call_next(request)
-    # 1. iframe 허용: X-Frame-Options 제거 및 CSP 설정
+    # iframe 허용: X-Frame-Options 제거 및 CSP 설정
     response.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://translate.swiftmedicalclinic.com"
     if "X-Frame-Options" in response.headers:
         del response.headers["X-Frame-Options"]
-
-    # 2. Cross-domain iframe에서 세션 쿠키가 동작하도록 SameSite=None; Secure 설정
-    #    (다른 도메인의 iframe 안에서는 쿠키가 제3자 쿠키로 취급되어 기본적으로 차단됨)
-    raw_headers = response.raw_headers
-    for i in range(len(raw_headers)):
-        name, value = raw_headers[i]
-        if name.lower() == b"set-cookie":
-            cookie_str = value.decode()
-            # SameSite 속성을 None으로 변경 (cross-site 허용)
-            if "samesite" in cookie_str.lower():
-                cookie_str = re.sub(r'(?i)samesite=\w+', 'SameSite=None', cookie_str)
-            else:
-                cookie_str += "; SameSite=None"
-            # Secure 속성 추가 (SameSite=None 사용 시 필수)
-            if "secure" not in cookie_str.lower():
-                cookie_str += "; Secure"
-            raw_headers[i] = (name, cookie_str.encode())
-
     return response
 
 app.add_middleware(
@@ -379,51 +361,57 @@ class IdentifySpeakerRequest(BaseModel):
 @app.post("/identify-speaker")
 async def identify_speaker(req: IdentifySpeakerRequest):
     """
-    텍스트의 언어를 자동 감지하여 화자(Doctor/Patient)를 판별합니다.
-    API 호출 없이 langdetect 라이브러리를 사용합니다.
+    텍스트를 분석하여 화자가 의사(Doctor)인지 환자(Patient)인지 판별.
+    최대한 빠른 응답을 위해 최적화된 프롬프트를 사용합니다.
     """
-    from langdetect import detect, LangDetectException
-
-    # 언어명 → langdetect 코드 매핑
-    LANG_MAP = {
-        "english":    ["en"],
-        "korean":     ["ko"],
-        "japanese":   ["ja"],
-        "mandarin":   ["zh-cn", "zh-tw", "zh"],
-        "cantonese":  ["zh-cn", "zh-tw", "zh"],
-        "hindi":      ["hi"],
-        "spanish":    ["es"],
-        "french":     ["fr"],
-        "german":     ["de"],
-        "arabic":     ["ar"],
-        "portuguese": ["pt"],
-        "russian":    ["ru"],
-        "vietnamese": ["vi"],
-        "thai":       ["th"],
-        "indonesian": ["id"],
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI API key not configured")
+    
+    payload = {
+        "model":LLM_MODEL_2, # 사용자가 고정한 모델 유지
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are an ultra-fast language and speaker identifier. "
+                    "Follow this logic:\n"
+                    "1. Detect the language of the input text.\n"
+                    f"2. If the language matches {req.doctor_lang}, role is 'Doctor'.\n"
+                    f"3. If the language matches {req.patient_lang}, role is 'Patient'.\n"
+                    "4. If unclear, prioritize 'Doctor'.\n\n"
+                    "Respond ONLY with JSON format:\n"
+                    '{"language": "Detected Language", "role": "Doctor" or "Patient"}'
+                ),
+            },
+            {"role": "user", "content": req.text},
+        ],
+        "response_format": {"type": "json_object"},
     }
 
-    try:
-        detected_code = detect(req.text).lower()
-    except LangDetectException:
-        detected_code = ""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            },
+            json=payload,
+        )
 
-    doctor_codes  = LANG_MAP.get(req.doctor_lang.lower(),  [req.doctor_lang.lower()])
-    patient_codes = LANG_MAP.get(req.patient_lang.lower(), [req.patient_lang.lower()])
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
 
-    doctor_match  = any(detected_code.startswith(c) for c in doctor_codes)
-    patient_match = any(detected_code.startswith(c) for c in patient_codes)
-
-    if doctor_match and not patient_match:
-        role = "Doctor"
-    elif patient_match and not doctor_match:
-        role = "Patient"
-    else:
-        # 구분 불가 시 기본값: Doctor
-        role = "Doctor"
-
-    print(f"DEBUG: Detected lang='{detected_code}', role='{role}'")
-    return {"role": role}
+    data = response.json()
+    role_content = data["choices"][0]["message"]["content"]
+    role_json = json.loads(role_content)
+    
+    # 토큰 사용량 기록
+    if "usage" in data:
+        db_log_token_usage(data["usage"], LLM_MODEL_2, task="identify_speaker",
+                           input_text=req.text, output_text=role_content)
+    
+    print(f"DEBUG: Identify Speaker result: {role_json}")
+    return role_json
 
 
 # ──────────────────────────────────────────────

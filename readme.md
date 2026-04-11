@@ -95,3 +95,7 @@ API 서버가 데이터베이스와 성공적으로 통신하는지 확인하려
 
 > [!IMPORTANT]
 > MySQL 서버가 **실행 중**일 때 `db_data` 폴더를 복사하면 데이터가 오염될 수 있습니다. 반드시 서버를 중지한 후 복사하세요.
+<!-- 
+medical.naranja.my
+*
+ssh://host.docker.internal:22 -->
