@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Depends, Cookie, Query
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, Depends, Cookie, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from pydantic import BaseModel
 from typing import List, Optional
 import datetime
@@ -39,7 +41,9 @@ admin_sessions = {}
 app = FastAPI(
     title="Swift Medical API",
     description="Real-time Bilingual Medical Consultation Backend",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url=None,   # 커스텀 인증을 위해 기본 경로 비활성화
+    redoc_url=None
 )
 
 # 허용할 오리진 목록
@@ -57,6 +61,10 @@ app.add_middleware(
     allow_methods=["*"],              # 모든 HTTP 메서드(POST, GET 등) 허용
     allow_headers=["*"],              # 모든 헤더 허용
 )
+
+# --- Static Files & Templates ---
+# 이미지 폴더 서빙 (로고 등)
+app.mount("/image", StaticFiles(directory="image"), name="image")
 
 # --- Data Models ---
 
@@ -82,7 +90,40 @@ sessions_db = {}
 
 # --- Endpoints ---
 
-@app.get("/")
+@app.get("/", response_class=FileResponse)
+async def home():
+    """
+    Service home page (main.html).
+    """
+    return FileResponse("templates/main.html")
+# ──────────────────────────────────────────────
+# Documentation Authentication (Basic Auth)
+# ──────────────────────────────────────────────
+
+security = HTTPBasic()
+
+def authenticate_docs(credentials: HTTPBasicCredentials = Depends(security)):
+    """Docs 접속 시 .env의 ID/PW로 인증"""
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_ID or "")
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PW or "")
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+@app.get("/docs", include_in_schema=False)
+async def get_documentation(username: str = Depends(authenticate_docs)):
+    return get_swagger_ui_html(openapi_url=app.openapi_url, title=app.title + " - Swagger UI")
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc_documentation(username: str = Depends(authenticate_docs)):
+    return get_redoc_html(openapi_url=app.openapi_url, title=app.title + " - ReDoc")
+
+
+@app.get("/health_check")
 async def health_check():
     """
     Service health check endpoint.
