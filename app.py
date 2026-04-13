@@ -9,13 +9,15 @@ from typing import List, Optional
 import datetime
 import uvicorn
 import os
+import logging
 import json
 import hashlib
 import secrets
 import httpx
+import asyncio
 import mysql.connector
 from dotenv import load_dotenv
-from func import db_log_token_usage
+from func import db_log_token_usage, db_log_token_usage_async
 
 # SQLAlchemy & SQLAdmin
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
@@ -28,6 +30,7 @@ load_dotenv()
 
 # DB 접속 정보 (docker-compose의 환경 변수 및 .env에서 로드)
 DB_HOST = os.getenv("MYSQL_HOST", "db")
+DB_PORT = os.getenv("MYSQL_PORT", "3306")
 DB_USER = os.getenv("MYSQL_USER")
 DB_PASSWORD = os.getenv("MYSQL_PASSWORD")
 DB_NAME = os.getenv("MYSQL_DATABASE")
@@ -43,7 +46,7 @@ LLM_MODEL_2 = "gpt-5.4-nano-2026-03-17"
 STT_MODEL = "gpt-4o-transcribe"
 
 # SQLAlchemy 엔진 생성 (SQLAdmin용)
-DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:3306/{DB_NAME}"
+DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 sa_engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 # SQLAlchemy ORM 모델 (token_usage_logs 테이블 매핑)
@@ -89,6 +92,20 @@ authentication_backend = AdminAuth(secret_key=secrets.token_hex(32))
 admin_sessions = {}
 
 
+# ──────────────────────────────────────────────
+# 로깅 설정 (타임스탬프 포함)
+# ──────────────────────────────────────────────
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
+logger = logging.getLogger("swift_medical")
+
+# uvicorn 로거에도 같은 포맷 적용
+for uv_logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
+    uv_logger = logging.getLogger(uv_logger_name)
+    for handler in uv_logger.handlers:
+        handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
+
 app = FastAPI(
     title="Swift Medical API",
     description="Real-time Bilingual Medical Consultation Backend",
@@ -97,11 +114,51 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ──────────────────────────────────────────────
+# 전역 httpx 클라이언트 (연결 풀 재활용, 성능 향상)
+# ──────────────────────────────────────────────
+openai_client: httpx.AsyncClient = None
+
+@app.on_event("startup")
+async def startup_event():
+    global openai_client
+    openai_client = httpx.AsyncClient(
+        timeout=60.0,
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+    )
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global openai_client
+    if openai_client:
+        await openai_client.aclose()
+
+async def openai_request_with_retry(method="post", url="", max_retries=3, **kwargs):
+    """
+    OpenAI API 요청을 재시도 로직과 함께 수행합니다.
+    간헐적 연결 실패(ConnectError) 시 자동 재시도합니다.
+    """
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            if method == "post":
+                response = await openai_client.post(url, **kwargs)
+            else:
+                response = await openai_client.get(url, **kwargs)
+            return response
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            last_exc = e
+            logger.warning(f"OpenAI request attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))  # 점진적 대기
+    raise last_exc
+
 # 허용할 오리진 목록
+# 주의: URL 끝에 / 를 붙이면 CORS 매칭이 실패합니다
 origins = [
     "https://translate.swiftmedicalclinic.com",
-    "http://localhost:3000", # 로컬 테스트용이 있다면 추가
-    "https://swift-translate-real.netlify.app/"
+    "http://localhost:3000",
+    "https://swift-translate-real.netlify.app"
 ]
 
 # 다른 도메인(translate.swiftmedicalclinic.com)에서 iframe으로 삽입할 수 있도록 허용하는 미들웨어
@@ -226,6 +283,7 @@ async def db_test():
         # DB 연결 시도
         connection = mysql.connector.connect(
             host=DB_HOST,
+            port=int(DB_PORT),
             user=DB_USER,
             password=DB_PASSWORD,
             database=DB_NAME,
@@ -325,15 +383,19 @@ async def speech_to_text(file: UploadFile = File(...)):
     audio_bytes = await file.read()
     filename = file.filename or "speech.webm"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            files={"file": (filename, audio_bytes, file.content_type or "audio/webm")},
-            data={"model": STT_MODEL},
-        )
+    logger.info(f"STT request: filename={filename}, size={len(audio_bytes)} bytes, content_type={file.content_type}")
+
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty audio file received")
+
+    response = await openai_request_with_retry(
+        url="https://api.openai.com/v1/audio/transcriptions",
+        files={"file": (filename, audio_bytes, file.content_type or "audio/webm")},
+        data={"model": STT_MODEL},
+    )
 
     if response.status_code != 200:
+        logger.error(f"STT OpenAI error {response.status_code}: {response.text}")
         raise HTTPException(status_code=response.status_code, detail=response.text)
 
     res_json = response.json()
@@ -341,10 +403,10 @@ async def speech_to_text(file: UploadFile = File(...)):
     
     # STT 사용량 기록 (Whisper는 보통 usage 필드가 없으나, gpt-4o 계열일 경우 대비)
     if "usage" in res_json:
-        db_log_token_usage(res_json["usage"], STT_MODEL, filename=filename, task="stt",
+        await db_log_token_usage_async(res_json["usage"], STT_MODEL, filename=filename, task="stt",
                            output_text=stt_text)
     
-    print(f"DEBUG: STT response JSON: {res_json}")
+    logger.info(f"STT result: {stt_text[:100]}")
     return res_json
 
 
@@ -388,15 +450,11 @@ async def identify_speaker(req: IdentifySpeakerRequest):
         "response_format": {"type": "json_object"},
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-            },
-            json=payload,
-        )
+    response = await openai_request_with_retry(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json"},
+        json=payload,
+    )
 
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -407,10 +465,10 @@ async def identify_speaker(req: IdentifySpeakerRequest):
     
     # 토큰 사용량 기록
     if "usage" in data:
-        db_log_token_usage(data["usage"], LLM_MODEL_2, task="identify_speaker",
+        await db_log_token_usage_async(data["usage"], LLM_MODEL_2, task="identify_speaker",
                            input_text=req.text, output_text=role_content)
     
-    print(f"DEBUG: Identify Speaker result: {role_json}")
+    logger.info(f"Identify Speaker result: {role_json}")
     return role_json
 
 
@@ -449,15 +507,11 @@ async def translate(req: TranslateRequest):
         ],
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-            },
-            json=payload,
-        )
+    response = await openai_request_with_retry(
+        url="https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json"},
+        json=payload,
+    )
 
     if response.status_code != 200:
         raise HTTPException(status_code=response.status_code, detail=response.text)
@@ -467,9 +521,9 @@ async def translate(req: TranslateRequest):
 
     # 토큰 사용량 기록
     if "usage" in data:
-        db_log_token_usage(data["usage"], LLM_MODEL, task="translate",
+        await db_log_token_usage_async(data["usage"], LLM_MODEL, task="translate",
                            input_text=req.text, output_text=translated_text)
-        print(f"DEBUG: Translation usage logged. Total: {data['usage'].get('total_tokens')}")
+        logger.info(f"Translation usage logged. Total: {data['usage'].get('total_tokens')}")
 
     return {"translated_text": translated_text}
 

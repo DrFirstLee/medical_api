@@ -7,6 +7,7 @@ load_dotenv()
 
 # DB 접속 정보 설정
 DB_HOST = os.getenv("MYSQL_HOST", "db")  # Docker 실행 시 'db' 컨테이너 호스트명 사용
+DB_PORT = int(os.getenv("MYSQL_PORT", "3306"))
 DB_USER = os.getenv("MYSQL_USER")
 DB_PASSWORD = os.getenv("MYSQL_PASSWORD")
 DB_NAME = os.getenv("MYSQL_DATABASE")
@@ -16,6 +17,7 @@ def create_table():
         # DB 연결
         connection = mysql.connector.connect(
             host=DB_HOST,
+            port=DB_PORT,
             user=DB_USER,
             password=DB_PASSWORD,
             database=DB_NAME
