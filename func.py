@@ -15,7 +15,7 @@ DB_PASSWORD = os.getenv("MYSQL_PASSWORD")
 DB_NAME = os.getenv("MYSQL_DATABASE")
 
 def db_log_token_usage(usage_dict, model, filename="N/A", page_num=0, task="unknown",
-                       input_text=None, output_text=None):
+                       input_text=None, output_text=None, patient_name="N/A"):
     """
     GPT 혹은 Whisper 응답의 토큰 사용량을 MySQL DB에 기록합니다. (동기 버전)
     
@@ -51,11 +51,11 @@ def db_log_token_usage(usage_dict, model, filename="N/A", page_num=0, task="unkn
 
         insert_query = """
         INSERT INTO token_usage_logs 
-        (filename, page_num, task, model, input_tokens, cached_tokens, output_tokens, total_tokens, input_text, output_text)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (patient_name, filename, page_num, task, model, input_tokens, cached_tokens, output_tokens, total_tokens, input_text, output_text)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         cursor.execute(insert_query, (
-            filename, page_num, task, model, 
+            patient_name, filename, page_num, task, model, 
             input_tokens, cached_tokens, output_tokens, total_tokens,
             input_text, output_text
         ))
@@ -67,7 +67,7 @@ def db_log_token_usage(usage_dict, model, filename="N/A", page_num=0, task="unkn
 
 
 async def db_log_token_usage_async(usage_dict, model, filename="N/A", page_num=0, task="unknown",
-                                   input_text=None, output_text=None):
+                                   input_text=None, output_text=None, patient_name="N/A"):
     """
     비동기 래퍼: 동기 DB 로깅을 별도 스레드에서 실행하여 이벤트 루프 블로킹 방지.
     동시에 여러 프론트엔드 요청이 와도 서로 블로킹하지 않습니다.
@@ -77,6 +77,6 @@ async def db_log_token_usage_async(usage_dict, model, filename="N/A", page_num=0
         None,  # 기본 ThreadPoolExecutor 사용
         lambda: db_log_token_usage(usage_dict, model, filename=filename,
                                    page_num=page_num, task=task,
-                                   input_text=input_text, output_text=output_text)
+                                   input_text=input_text, output_text=output_text, patient_name=patient_name)
     )
 

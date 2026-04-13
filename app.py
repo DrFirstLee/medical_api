@@ -57,6 +57,7 @@ class TokenUsageLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    patient_name = Column(String(100))
     filename = Column(String(255))
     page_num = Column(Integer)
     task = Column(String(50))
@@ -193,14 +194,14 @@ class TokenUsageLogAdmin(ModelView, model=TokenUsageLog):
     name_plural = "Token Usage Logs"
     icon = "fa-solid fa-chart-bar"
     column_list = [
-        TokenUsageLog.timestamp, 
+        TokenUsageLog.timestamp, TokenUsageLog.patient_name,
         TokenUsageLog.task, TokenUsageLog.model,
         TokenUsageLog.input_tokens,
         TokenUsageLog.output_tokens, TokenUsageLog.total_tokens,
         TokenUsageLog.input_text, TokenUsageLog.output_text,
     ]
     column_searchable_list = [
-        TokenUsageLog.task, TokenUsageLog.model,
+        TokenUsageLog.patient_name, TokenUsageLog.task, TokenUsageLog.model,
         TokenUsageLog.input_text, TokenUsageLog.output_text
     ]
     column_sortable_list = [
@@ -213,7 +214,7 @@ class TokenUsageLogAdmin(ModelView, model=TokenUsageLog):
     can_delete = True
     can_edit = False
     column_details_list = [
-        TokenUsageLog.id, TokenUsageLog.timestamp, TokenUsageLog.filename,
+        TokenUsageLog.id, TokenUsageLog.timestamp, TokenUsageLog.patient_name, TokenUsageLog.filename,
         TokenUsageLog.page_num, TokenUsageLog.task, TokenUsageLog.model,
         TokenUsageLog.input_tokens, TokenUsageLog.cached_tokens,
         TokenUsageLog.output_tokens, TokenUsageLog.total_tokens,
@@ -273,6 +274,32 @@ async def health_check():
         "service": "Swift Medical API",
         "timestamp": datetime.datetime.now().isoformat()
     }
+
+@app.get("/patients")
+async def get_patients():
+    """
+    token_usage_logs 에 저장된 기존 환자명(patient_name) 목록을 고유값으로 반환.
+    """
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            port=int(DB_PORT),
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            connect_timeout=5
+        )
+        if connection.is_connected():
+            cursor = connection.cursor()
+            cursor.execute("SELECT DISTINCT patient_name FROM token_usage_logs WHERE patient_name IS NOT NULL AND patient_name != 'N/A' AND patient_name != ''")
+            results = cursor.fetchall()
+            cursor.close()
+            connection.close()
+            return [row[0] for row in results if row[0]]
+    except Exception as e:
+        logger.error(f"Error fetching patients from DB: {e}")
+        return []
+    return []
 
 @app.get("/db-test")
 async def db_test():
@@ -372,7 +399,7 @@ async def login(req: LoginRequest):
 # ──────────────────────────────────────────────
 
 @app.post("/stt")
-async def speech_to_text(file: UploadFile = File(...)):
+async def speech_to_text(file: UploadFile = File(...), patient_name: str = Form(default="N/A")):
     """
     음성 파일을 받아 OpenAI Whisper(gpt-4o-transcribe)로 텍스트 변환.
     클라이언트에서 audio/webm 등의 오디오 파일을 전송하면 됩니다.
@@ -404,7 +431,7 @@ async def speech_to_text(file: UploadFile = File(...)):
     # STT 사용량 기록 (Whisper는 보통 usage 필드가 없으나, gpt-4o 계열일 경우 대비)
     if "usage" in res_json:
         await db_log_token_usage_async(res_json["usage"], STT_MODEL, filename=filename, task="stt",
-                           output_text=stt_text)
+                           output_text=stt_text, patient_name=patient_name)
     
     logger.info(f"STT result: {stt_text[:100]}")
     return res_json
@@ -418,6 +445,7 @@ class IdentifySpeakerRequest(BaseModel):
     text: str
     doctor_lang: str
     patient_lang: str
+    patient_name: str = "N/A"
 
 
 @app.post("/identify-speaker")
@@ -466,7 +494,7 @@ async def identify_speaker(req: IdentifySpeakerRequest):
     # 토큰 사용량 기록
     if "usage" in data:
         await db_log_token_usage_async(data["usage"], LLM_MODEL_2, task="identify_speaker",
-                           input_text=req.text, output_text=role_content)
+                           input_text=req.text, output_text=role_content, patient_name=req.patient_name)
     
     logger.info(f"Identify Speaker result: {role_json}")
     return role_json
@@ -480,6 +508,7 @@ class TranslateRequest(BaseModel):
     text: str
     doctor_lang: str
     patient_lang: str
+    patient_name: str = "N/A"
 
 
 @app.post("/translate")
@@ -522,7 +551,7 @@ async def translate(req: TranslateRequest):
     # 토큰 사용량 기록
     if "usage" in data:
         await db_log_token_usage_async(data["usage"], LLM_MODEL, task="translate",
-                           input_text=req.text, output_text=translated_text)
+                           input_text=req.text, output_text=translated_text, patient_name=req.patient_name)
         logger.info(f"Translation usage logged. Total: {data['usage'].get('total_tokens')}")
 
     return {"translated_text": translated_text}

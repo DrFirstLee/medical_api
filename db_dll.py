@@ -29,6 +29,7 @@ def create_table():
         CREATE TABLE IF NOT EXISTS token_usage_logs (
             id INT AUTO_INCREMENT PRIMARY KEY,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            patient_name VARCHAR(100),
             filename VARCHAR(255),
             page_num INT,
             task VARCHAR(50),
@@ -45,6 +46,17 @@ def create_table():
         cursor.execute(create_table_query)
         connection.commit()
         print("Table 'token_usage_logs' created successfully (or already exists).")
+
+        # 기존 테이블에 patient_name이 없는 경우를 위한 ALTER TABLE
+        try:
+            cursor.execute("ALTER TABLE token_usage_logs ADD COLUMN patient_name VARCHAR(100) AFTER timestamp;")
+            connection.commit()
+            print("Column 'patient_name' added successfully.")
+        except mysql.connector.errors.ProgrammingError as e:
+            if "Duplicate column name" in str(e):
+                pass
+            else:
+                print(f"Error checking/adding column: {e}")
 
     except Exception as e:
         print(f"Error creating table: {e}")
