@@ -334,46 +334,6 @@ async def db_test():
             "timestamp": datetime.datetime.now().isoformat()
         }
 
-# @app.post("/sessions", response_model=ConsultationSession)
-# async def create_session(doctor_lang: str, patient_lang: str):
-#     """
-#     Initialize a new consultation session.
-#     """
-#     session_id = str(len(sessions_db) + 1).zfill(6)
-#     new_session = ConsultationSession(
-#         session_id=session_id,
-#         doctor_lang=doctor_lang,
-#         patient_lang=patient_lang
-#     )
-#     sessions_db[session_id] = new_session
-#     return new_session
-
-# @app.post("/sessions/{session_id}/turns")
-# async def add_turn(session_id: str, turn: DialogueTurn):
-#     """
-#     Add a dialogue turn to an existing session.
-#     """
-#     if session_id not in sessions_db:
-#         raise HTTPException(status_code=404, detail="Session not found")
-    
-#     sessions_db[session_id].turns.append(turn)
-#     return {"status": "success", "turn_count": len(sessions_db[session_id].turns)}
-
-# @app.get("/sessions/{session_id}", response_model=ConsultationSession)
-# async def get_session(session_id: str):
-#     """
-#     Retrieve the full history of a consultation session.
-#     """
-#     if session_id not in sessions_db:
-#         raise HTTPException(status_code=404, detail="Session not found")
-#     return sessions_db[session_id]
-
-# @app.get("/sessions", response_model=List[ConsultationSession])
-# async def list_sessions():
-#     """
-#     List all active/stored sessions.
-#     """
-#     return list(sessions_db.values())
 
 @app.post("/login")
 async def login(req: LoginRequest):
@@ -447,6 +407,61 @@ class IdentifySpeakerRequest(BaseModel):
     patient_lang: str
     patient_name: str = "N/A"
 
+
+
+class HistoryRequest(BaseModel):
+    patient_name: str
+
+@app.post("/speaker-history")
+async def get_speaker_history(req: HistoryRequest):
+    """
+    특정 환자의 과거 대화 이력을 가져옵니다.
+    task='stt' -> Doctor, task='translate' -> Patient 로 매핑합니다.
+    """
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            port=int(DB_PORT),
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            connect_timeout=5
+        )
+        if connection.is_connected():
+            cursor = connection.cursor(dictionary=True)
+            # task가 stt면 의사가 말한 것, translate면 환자가 말한 것을 번역한 것 (원본 텍스트)
+            query = """
+                SELECT timestamp, task, input_text, output_text 
+                FROM token_usage_logs 
+                WHERE patient_name = %s AND task IN ('stt', 'translate')
+                ORDER BY timestamp ASC
+            """
+            cursor.execute(query, (req.patient_name,))
+            rows = cursor.fetchall()
+            cursor.close()
+            connection.close()
+            
+            history = []
+            for row in rows:
+                if row['task'] == 'stt':
+                    role = "Doctor"
+                    text = row['output_text']
+                    translated = "" # STT는 번역이 없음
+                else:
+                    role = "Patient"
+                    text = row['input_text']
+                    translated = row['output_text']
+
+                history.append({
+                    "timestamp": row['timestamp'].isoformat() if row['timestamp'] else None,
+                    "role": role,
+                    "text": text,
+                    "translated": translated
+                })
+            return history
+    except Exception as e:
+        logger.error(f"Error fetching speaker history: {e}")
+        return []
 
 @app.post("/identify-speaker")
 async def identify_speaker(req: IdentifySpeakerRequest):
