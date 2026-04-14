@@ -20,7 +20,7 @@ services:
   # [서비스용] 정식 도메인 연결 (swift-api.naranja.my)
   tunnel_api:
     image: cloudflare/cloudflared:latest
-    container_name: tunnel_server
+    container_name: swift_tunnel_server
     network_mode: host
     command: tunnel run
     environment:
@@ -30,7 +30,7 @@ services:
   # [데이터베이스] API용 전용 MySQL 설정
   db:
     image: mysql:8.0
-    container_name: mysql_db
+    container_name: swift_mysql_db
     restart: always
     ports:
       - "3307:3306"
