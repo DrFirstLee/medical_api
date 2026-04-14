@@ -16,6 +16,9 @@ import secrets
 import httpx
 import asyncio
 import mysql.connector
+import base64
+from pathlib import Path
+from openai import OpenAI
 from dotenv import load_dotenv
 from func import db_log_token_usage, db_log_token_usage_async
 
@@ -522,6 +525,7 @@ class TranslateRequest(BaseModel):
     doctor_lang: str
     patient_lang: str
     patient_name: str = "N/A"
+    use_tts: bool = False
 
 
 @app.post("/translate")
@@ -564,16 +568,37 @@ async def translate(req: TranslateRequest):
     data = response.json()
     translated_text = data["choices"][0]["message"]["content"]
 
+    translated_voice = None
+    if getattr(req, 'use_tts', False):
+        try:
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            speech_file_path = Path(__file__).parent / "speech.mp3"
+
+            with client.audio.speech.with_streaming_response.create(
+                model="gpt-4o-mini-tts",
+                voice="coral",
+                input=translated_text,
+                extra_body={"instructions": "Speak in a cheerful and positive tone."}
+            ) as tts_response:
+                tts_response.stream_to_file(speech_file_path)
+            
+            with open(speech_file_path, "rb") as f:
+                audio_data = f.read()
+            translated_voice = base64.b64encode(audio_data).decode("utf-8")
+        except Exception as e:
+            logger.error(f"TTS generation failed: {e}")
+
     # 토큰 사용량 기록
     if "usage" in data:
         await db_log_token_usage_async(data["usage"], LLM_MODEL, task="translate",
                            input_text=req.text, output_text=translated_text, patient_name=req.patient_name)
         logger.info(f"Translation usage logged. Total: {data['usage'].get('total_tokens')}")
 
-    return {"translated_text": translated_text}
+    result = {"translated_text": translated_text}
+    if translated_voice:
+        result["translated_voice"] = translated_voice
 
-
-
+    return result
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
