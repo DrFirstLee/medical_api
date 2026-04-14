@@ -436,7 +436,7 @@ async def get_speaker_history(req: HistoryRequest):
             query = """
                 SELECT timestamp, task, input_text, output_text 
                 FROM token_usage_logs 
-                WHERE patient_name = %s AND task IN ('stt', 'translate')
+                WHERE patient_name = %s AND task IN ('stt', 'identify_speaker', 'translate')
                 ORDER BY timestamp ASC
             """
             cursor.execute(query, (req.patient_name,))
@@ -445,22 +445,40 @@ async def get_speaker_history(req: HistoryRequest):
             connection.close()
             
             history = []
+            temp_turn = {}
             for row in rows:
-                if row['task'] == 'stt':
-                    role = "Doctor"
-                    text = row['output_text']
-                    translated = "" # STT는 번역이 없음
-                else:
-                    role = "Patient"
-                    text = row['input_text']
-                    translated = row['output_text']
+                t = row['task']
+                if t == 'stt':
+                    # 새로운 STT가 오면 이전 미완성 턴은 버리고 새로 시작 (순서가 꼬인 경우 패스)
+                    temp_turn = {'stt': row}
+                elif t in ('identify_speaker', 'translate'):
+                    if 'stt' not in temp_turn:
+                        # STT가 먼저 오지 않은 경우 순서가 꼬인 것으로 간주하여 패스
+                        temp_turn = {}
+                        continue
+                    
+                    temp_turn[t] = row
+                    
+                    # 3개가 모두 모였는지 확인
+                    if 'stt' in temp_turn and 'identify_speaker' in temp_turn and 'translate' in temp_turn:
+                        import json
+                        try:
+                            role_json = json.loads(temp_turn['identify_speaker']['output_text'])
+                            role = role_json.get('role', 'Patient')
+                        except Exception:
+                            role = "Patient"
+                        
+                        original_text = temp_turn['stt']['output_text']
+                        translated_text = temp_turn['translate']['output_text']
+                        
+                        history.append({
+                            "timestamp": temp_turn['stt']['timestamp'].isoformat() if temp_turn['stt']['timestamp'] else None,
+                            "role": role,
+                            "text": original_text,
+                            "translated": translated_text
+                        })
+                        temp_turn = {} # 한 턴 완료 시 초기화
 
-                history.append({
-                    "timestamp": row['timestamp'].isoformat() if row['timestamp'] else None,
-                    "role": role,
-                    "text": text,
-                    "translated": translated
-                })
             return history
     except Exception as e:
         logger.error(f"Error fetching speaker history: {e}")
