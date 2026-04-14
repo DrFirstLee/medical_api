@@ -18,7 +18,7 @@ import asyncio
 import mysql.connector
 import base64
 from pathlib import Path
-from openai import OpenAI
+# from openai import OpenAI (Removed to avoid dependency)
 from dotenv import load_dotenv
 from func import db_log_token_usage, db_log_token_usage_async
 
@@ -571,22 +571,28 @@ async def translate(req: TranslateRequest):
     translated_voice = None
     if getattr(req, 'use_tts', False):
         try:
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            speech_file_path = Path(__file__).parent / "speech.mp3"
-
-            with client.audio.speech.with_streaming_response.create(
-                model="gpt-4o-mini-tts",
-                voice="coral",
-                input=translated_text,
-                extra_body={"instructions": "Speak in a cheerful and positive tone."}
-            ) as tts_response:
-                tts_response.stream_to_file(speech_file_path)
+            # OpenAI SDK 대신 직접 HTTP 요청 사용
+            tts_payload = {
+                "model": "gpt-4o-mini-tts",
+                "voice": "coral",
+                "input": translated_text,
+                "speed": 1.1,
+                "instructions": "Speak in a cheerful, positive and slightly faster tone."
+            }
+            logger.info(f"Generating TTS for translated text...")
+            tts_response = await openai_request_with_retry(
+                url="https://api.openai.com/v1/audio/speech",
+                json=tts_payload
+            )
             
-            with open(speech_file_path, "rb") as f:
-                audio_data = f.read()
-            translated_voice = base64.b64encode(audio_data).decode("utf-8")
+            if tts_response.status_code == 200:
+                audio_data = tts_response.content
+                translated_voice = base64.b64encode(audio_data).decode("utf-8")
+                logger.info("TTS generation successful.")
+            else:
+                logger.error(f"TTS generation failed: {tts_response.status_code} - {tts_response.text}")
         except Exception as e:
-            logger.error(f"TTS generation failed: {e}")
+            logger.error(f"TTS generation critical error: {e}")
 
     # 토큰 사용량 기록
     if "usage" in data:
