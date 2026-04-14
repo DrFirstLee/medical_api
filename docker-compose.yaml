@@ -21,6 +21,7 @@ services:
     #   - MYSQL_HOST=swift_mysql_db  # [수정] 127.0.0.1 대신 DB 컨테이너 이름 사용
     #   - MYSQL_PORT=3306            # [수정] 외부 포트 3307 대신 내부 포트 3306 사용
     # networks:                      # [추가] 공유 네트워크 참여
+    #   - default              # DB와 통신하기 위한 기본 네트워크 
     #   - shared_api_network
     # restart: always
 
@@ -51,6 +52,13 @@ services:
     volumes:
       # 도커가 꺼져도 현재 폴더의 db_data 폴더에 데이터가 파일로 보존됩니다.
       - ./db_data:/var/lib/mysql
+      
+# # [2] 이 부분이 빠져서 에러가 났습니다! (맨 왼쪽에 배치)
+# networks:
+#   shared_api_network:
+#     external: true
 
 volumes:
   db_data:
+
+
