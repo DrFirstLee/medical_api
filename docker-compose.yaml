@@ -16,6 +16,13 @@ services:
       - MYSQL_HOST=127.0.0.1
       - MYSQL_PORT=3307
     restart: always
+    # environment:
+    #   - TZ=America/Calgary
+    #   - MYSQL_HOST=swift_mysql_db  # [수정] 127.0.0.1 대신 DB 컨테이너 이름 사용
+    #   - MYSQL_PORT=3306            # [수정] 외부 포트 3307 대신 내부 포트 3306 사용
+    # networks:                      # [추가] 공유 네트워크 참여
+    #   - shared_api_network
+    # restart: always
 
   # [서비스용] 정식 도메인 연결 (swift-api.naranja.my)
   tunnel_api:
