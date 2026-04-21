@@ -162,7 +162,9 @@ async def openai_request_with_retry(method="post", url="", max_retries=3, **kwar
 origins = [
     "https://translate.swiftmedicalclinic.com",
     "http://localhost:3000",
-    "https://swift-translate-real.netlify.app"
+    "https://swift-translate-real.netlify.app",
+    "https://screen.swiftmedicalclinic.com",
+    "https://swift-screen.netlify.app",
 ]
 
 # 다른 도메인(translate.swiftmedicalclinic.com)에서 iframe으로 삽입할 수 있도록 허용하는 미들웨어
