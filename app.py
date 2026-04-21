@@ -640,21 +640,38 @@ async def translate(req: TranslateRequest):
 
     return result
 
+@app.get("/screen-data")
+async def get_screen_data():
+    """
+    전광판(index.html)에서 서버에 저장된 최신 데이터를 가져옵니다.
+    최근 업데이트 후 5분이 지나면 자동으로 만료시켜 빈 화면이 나오게 합니다.
+    """
+    latest = screen_cache.get("latest")
+    if not latest:
+        return None
+
+    # 5분(300초) 만료 체크
+    try:
+        updated_at = datetime.datetime.fromisoformat(latest.get("server_time"))
+        if (datetime.datetime.now() - updated_at).total_seconds() > 300:
+            screen_cache["latest"] = None
+            return None
+    except (ValueError, TypeError):
+        pass
+
+    return latest
+
 @app.post("/screen-update")
 async def update_screen(data: ScreenData):
     """
     관라페이지(manage.html)에서 새로운 전광판 데이터를 서버 캐시에 저장합니다.
     """
-    screen_cache["latest"] = data.dict()
+    data_dict = data.dict()
+    # 서버 측 타임스탬프 추가 (만료 체크용)
+    data_dict["server_time"] = datetime.datetime.now().isoformat()
+    screen_cache["latest"] = data_dict
     logger.info(f"Screen updated: {data.firstName} {data.lastName}")
     return {"status": "success", "message": "Screen data updated"}
-
-@app.get("/screen-data")
-async def get_screen_data():
-    """
-    전광판(index.html)에서 서버에 저장된 최신 데이터를 가져옵니다.
-    """
-    return screen_cache["latest"]
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
