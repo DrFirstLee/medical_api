@@ -256,6 +256,18 @@ class ConsultationSession(BaseModel):
 # In-memory storage (Replace with Database for production)
 sessions_db = {}
 
+# Signboard Cache (In-memory)
+screen_cache = {
+    "latest": None
+}
+
+class ScreenData(BaseModel):
+    firstName: str
+    lastName: str
+    room: str
+    note: Optional[str] = ""
+    timestamp: Optional[str] = ""
+
 # --- Endpoints ---
 
 @app.get("/", response_class=FileResponse)
@@ -627,6 +639,22 @@ async def translate(req: TranslateRequest):
         result["translated_voice"] = translated_voice
 
     return result
+
+@app.post("/screen-update")
+async def update_screen(data: ScreenData):
+    """
+    관라페이지(manage.html)에서 새로운 전광판 데이터를 서버 캐시에 저장합니다.
+    """
+    screen_cache["latest"] = data.dict()
+    logger.info(f"Screen updated: {data.firstName} {data.lastName}")
+    return {"status": "success", "message": "Screen data updated"}
+
+@app.get("/screen-data")
+async def get_screen_data():
+    """
+    전광판(index.html)에서 서버에 저장된 최신 데이터를 가져옵니다.
+    """
+    return screen_cache["latest"]
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
