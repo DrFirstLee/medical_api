@@ -104,9 +104,16 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=DATE_FORMAT)
 logger = logging.getLogger("swift_medical")
 
-# uvicorn 로거에도 같은 포맷 적용
+# 특정 엔드포인트(/screen-data)의 로그를 제외하기 위한 필터
+class EndpointFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().find("/screen-data") == -1
+
+# uvicorn 로거에도 같은 포맷 적용 및 특정 엔드포인트 필터링
 for uv_logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
     uv_logger = logging.getLogger(uv_logger_name)
+    if uv_logger_name == "uvicorn.access":
+        uv_logger.addFilter(EndpointFilter())
     for handler in uv_logger.handlers:
         handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
 
