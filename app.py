@@ -746,5 +746,33 @@ async def clear_screen():
     logger.info("Screen queue cleared")
     return {"status": "success", "message": "Queue cleared"}
 
+@app.post("/screen-reorder")
+async def reorder_screen(data: dict):
+    """
+    Reorder the signboard queue based on a list of IDs.
+    """
+    new_order_ids = data.get("ids", [])
+    if not new_order_ids:
+        return {"status": "error", "message": "No IDs provided"}
+    
+    current_queue = screen_cache.get("queue", [])
+    id_to_item = {item["id"]: item for item in current_queue}
+    
+    new_queue = []
+    for item_id in new_order_ids:
+        if item_id in id_to_item:
+            new_queue.append(id_to_item[item_id])
+            
+    # Add any items that were not in the reorder list (safety measure)
+    seen_ids = set(new_order_ids)
+    for item in current_queue:
+        if item["id"] not in seen_ids:
+            new_queue.append(item)
+            
+    screen_cache["queue"] = new_queue
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    logger.info(f"Screen queue reordered: {len(new_queue)} items")
+    return {"status": "success", "message": "Queue reordered"}
+
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
