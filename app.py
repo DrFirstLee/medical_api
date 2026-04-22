@@ -18,6 +18,7 @@ import asyncio
 import mysql.connector
 import base64
 from pathlib import Path
+import uuid
 # from openai import OpenAI (Removed to avoid dependency)
 from dotenv import load_dotenv
 from func import db_log_token_usage, db_log_token_usage_async
@@ -265,7 +266,7 @@ sessions_db = {}
 
 # Signboard Cache (In-memory)
 screen_cache = {
-    "latest": None
+    "queue": []
 }
 
 class ScreenData(BaseModel):
@@ -650,35 +651,47 @@ async def translate(req: TranslateRequest):
 @app.get("/screen-data")
 async def get_screen_data():
     """
-    전광판(index.html)에서 서버에 저장된 최신 데이터를 가져옵니다.
-    최근 업데이트 후 5분이 지나면 자동으로 만료시켜 빈 화면이 나오게 합니다.
+    전광판(index.html)에서 서버에 저장된 데이터를 가져옵니다.
     """
-    latest = screen_cache.get("latest")
-    if not latest:
-        return None
-
-    # 5분(300초) 만료 체크
-    try:
-        updated_at = datetime.datetime.fromisoformat(latest.get("server_time"))
-        if (datetime.datetime.now() - updated_at).total_seconds() > 300:
-            screen_cache["latest"] = None
-            return None
-    except (ValueError, TypeError):
-        pass
-
-    return latest
+    return screen_cache.get("queue", [])
 
 @app.post("/screen-update")
 async def update_screen(data: ScreenData):
     """
-    관라페이지(manage.html)에서 새로운 전광판 데이터를 서버 캐시에 저장합니다.
+    관리페이지(manage.html)에서 새로운 전광판 데이터를 서버 캐시에 추가합니다.
     """
     data_dict = data.dict()
-    # 서버 측 타임스탬프 추가 (만료 체크용)
+    data_dict["id"] = str(uuid.uuid4())
     data_dict["server_time"] = datetime.datetime.now().isoformat()
-    screen_cache["latest"] = data_dict
-    logger.info(f"Screen updated: {data.firstName} {data.lastName}")
-    return {"status": "success", "message": "Screen data updated"}
+    
+    if "queue" not in screen_cache:
+        screen_cache["queue"] = []
+    screen_cache["queue"].append(data_dict)
+    
+    logger.info(f"Screen updated: {data.firstName} {data.lastName} added to queue")
+    return {"status": "success", "message": "Screen data added", "id": data_dict["id"]}
+
+@app.delete("/screen-delete/{item_id}")
+async def delete_screen(item_id: str):
+    """
+    특정 전광판 데이터를 큐에서 제거합니다.
+    """
+    if "queue" in screen_cache:
+        initial_length = len(screen_cache["queue"])
+        screen_cache["queue"] = [item for item in screen_cache["queue"] if item.get("id") != item_id]
+        if len(screen_cache["queue"]) < initial_length:
+            logger.info(f"Screen item deleted: {item_id}")
+            return {"status": "success", "message": "Item deleted"}
+    return {"status": "not_found", "message": "Item not found"}
+
+@app.delete("/screen-clear")
+async def clear_screen():
+    """
+    전광판 큐를 모두 비웁니다.
+    """
+    screen_cache["queue"] = []
+    logger.info("Screen queue cleared")
+    return {"status": "success", "message": "Queue cleared"}
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
