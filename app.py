@@ -267,7 +267,8 @@ sessions_db = {}
 # Signboard Cache (In-memory)
 screen_cache = {
     "queue": [],
-    "default_message": "Welcome to Swift Medical Clinic"
+    "default_message": "Welcome to Swift Medical Clinic",
+    "version": 0
 }
 
 class ScreenData(BaseModel):
@@ -649,15 +650,48 @@ async def translate(req: TranslateRequest):
 
     return result
 
+def _screen_payload():
+    """현재 screen_cache의 데이터를 클라이언트 전송용 dict로 반환합니다."""
+    return {
+        "queue": screen_cache.get("queue", []),
+        "default_message": screen_cache.get("default_message", "Welcome to Swift Medical Clinic"),
+        "version": screen_cache.get("version", 0)
+    }
+
 @app.get("/screen-data")
 async def get_screen_data():
     """
     전광판(index.html)에서 서버에 저장된 데이터를 가져옵니다.
     """
-    return {
-        "queue": screen_cache.get("queue", []),
-        "default_message": screen_cache.get("default_message", "Welcome to Swift Medical Clinic")
-    }
+    return _screen_payload()
+
+@app.get("/screen-events")
+async def screen_events(request: Request):
+    """
+    SSE(Server-Sent Events) 엔드포인트.
+    데이터가 변경될 때만 클라이언트에 push합니다.
+    """
+    async def event_generator():
+        last_version = -1
+        while True:
+            if await request.is_disconnected():
+                break
+            current_version = screen_cache.get("version", 0)
+            if current_version != last_version:
+                last_version = current_version
+                payload = _screen_payload()
+                yield f"data: {json.dumps(payload)}\n\n"
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.post("/screen-config")
 async def update_screen_config(config: dict):
@@ -666,6 +700,7 @@ async def update_screen_config(config: dict):
     """
     if "default_message" in config:
         screen_cache["default_message"] = config["default_message"]
+        screen_cache["version"] = screen_cache.get("version", 0) + 1
         logger.info(f"Screen config updated: default_message='{config['default_message']}'")
         return {"status": "success", "message": "Config updated"}
     return {"status": "error", "message": "Invalid config"}
@@ -682,6 +717,7 @@ async def update_screen(data: ScreenData):
     if "queue" not in screen_cache:
         screen_cache["queue"] = []
     screen_cache["queue"].append(data_dict)
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
     
     logger.info(f"Screen updated: {data.firstName} {data.lastName} added to queue")
     return {"status": "success", "message": "Screen data added", "id": data_dict["id"]}
@@ -695,6 +731,7 @@ async def delete_screen(item_id: str):
         initial_length = len(screen_cache["queue"])
         screen_cache["queue"] = [item for item in screen_cache["queue"] if item.get("id") != item_id]
         if len(screen_cache["queue"]) < initial_length:
+            screen_cache["version"] = screen_cache.get("version", 0) + 1
             logger.info(f"Screen item deleted: {item_id}")
             return {"status": "success", "message": "Item deleted"}
     return {"status": "not_found", "message": "Item not found"}
@@ -705,6 +742,7 @@ async def clear_screen():
     전광판 큐를 모두 비웁니다.
     """
     screen_cache["queue"] = []
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
     logger.info("Screen queue cleared")
     return {"status": "success", "message": "Queue cleared"}
 
