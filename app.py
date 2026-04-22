@@ -266,7 +266,8 @@ sessions_db = {}
 
 # Signboard Cache (In-memory)
 screen_cache = {
-    "queue": []
+    "queue": [],
+    "default_message": "Welcome to Swift Medical Clinic"
 }
 
 class ScreenData(BaseModel):
@@ -653,7 +654,21 @@ async def get_screen_data():
     """
     전광판(index.html)에서 서버에 저장된 데이터를 가져옵니다.
     """
-    return screen_cache.get("queue", [])
+    return {
+        "queue": screen_cache.get("queue", []),
+        "default_message": screen_cache.get("default_message", "Welcome to Swift Medical Clinic")
+    }
+
+@app.post("/screen-config")
+async def update_screen_config(config: dict):
+    """
+    전광판 설정을 업데이트합니다 (기본 문구 등).
+    """
+    if "default_message" in config:
+        screen_cache["default_message"] = config["default_message"]
+        logger.info(f"Screen config updated: default_message='{config['default_message']}'")
+        return {"status": "success", "message": "Config updated"}
+    return {"status": "error", "message": "Invalid config"}
 
 @app.post("/screen-update")
 async def update_screen(data: ScreenData):
