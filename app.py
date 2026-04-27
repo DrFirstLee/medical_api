@@ -265,17 +265,38 @@ class ConsultationSession(BaseModel):
 sessions_db = {}
 
 # ──────────────────────────────────────────────
-# Signboard 3-Tier Cache (In-memory)
+# Signboard 3-Tier Cache (File-based Persistence)
 # ──────────────────────────────────────────────
-screen_cache = {
-    "internal_waitlist": [],      # 1단: 내부 대기리스트
-    "waiting_reservation": [],    # 2단-a: 진짜 대기 (예약)
-    "waiting_walkin": [],         # 2단-b: 진짜 대기 (워크인)
-    "screen_list": [],            # 3단: 화면 리스트 (Call 화면)
-    "doctors": [],                # 등록된 의사 목록
-    "default_message": "Welcome to Swift Medical Clinic",
-    "version": 0
-}
+SCREEN_CACHE_FILE = "screen_cache.json"
+
+def load_screen_cache():
+    if os.path.exists(SCREEN_CACHE_FILE):
+        try:
+            with open(SCREEN_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading screen cache file: {e}")
+    
+    # Default initial state
+    return {
+        "internal_waitlist": [],      # 1단: 내부 대기리스트
+        "waiting_reservation": [],    # 2단-a: 진짜 대기 (예약)
+        "waiting_walkin": [],         # 2단-b: 진짜 대기 (워크인)
+        "screen_list": [],            # 3단: 화면 리스트 (Call 화면)
+        "doctors": ["Dr. Oyebolu", "Dr. Onyekwena"], # 등록된 의사 목록
+        "default_message": "Welcome to Swift Medical Clinic",
+        "version": 0
+    }
+
+def save_screen_cache(data):
+    try:
+        with open(SCREEN_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving screen cache file: {e}")
+
+# Initialize (if file doesn't exist, it will use default)
+screen_cache = load_screen_cache()
 
 # 유효한 리스트 이름
 VALID_LISTS = ["internal_waitlist", "waiting_reservation", "waiting_walkin", "screen_list"]
@@ -687,7 +708,7 @@ async def get_screen_data():
     """
     전체 전광판 데이터를 가져옵니다 (3단 리스트 + 의사 목록).
     """
-    return _screen_payload()
+    return load_screen_cache()
 
 @app.get("/screen-events")
 async def screen_events(request: Request):
@@ -700,11 +721,11 @@ async def screen_events(request: Request):
         while True:
             if await request.is_disconnected():
                 break
-            current_version = screen_cache.get("version", 0)
+            current_cache = load_screen_cache()
+            current_version = current_cache.get("version", 0)
             if current_version != last_version:
                 last_version = current_version
-                payload = _screen_payload()
-                yield f"data: {json.dumps(payload)}\n\n"
+                yield f"data: {json.dumps(current_cache)}\n\n"
             await asyncio.sleep(0.5)
 
     return StreamingResponse(
@@ -722,13 +743,15 @@ async def add_patient(data: PatientData):
     """
     새 환자를 1차 대기리스트(internal_waitlist)에 추가합니다.
     """
+    cache = load_screen_cache()
     data_dict = data.dict()
     data_dict["id"] = str(uuid.uuid4())
     data_dict["timestamp"] = datetime.datetime.now().isoformat()
     data_dict["server_time"] = datetime.datetime.now().isoformat()
 
-    screen_cache["internal_waitlist"].append(data_dict)
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    cache["internal_waitlist"].append(data_dict)
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
 
     logger.info(f"Patient added to internal_waitlist: {data.firstName} {data.lastName}")
     return {"status": "success", "message": "Patient added", "id": data_dict["id"]}
@@ -737,8 +760,6 @@ async def add_patient(data: PatientData):
 async def move_patient(data: dict):
     """
     환자를 다른 리스트로 이동합니다.
-    body: { "patient_id": "...", "target_list": "waiting_reservation|waiting_walkin|screen_list|internal_waitlist",
-            "updates": { ... optional field updates ... } }
     """
     patient_id = data.get("patient_id")
     target_list = data.get("target_list")
@@ -750,19 +771,28 @@ async def move_patient(data: dict):
     if target_list not in VALID_LISTS:
         return {"status": "error", "message": f"Invalid target_list. Must be one of {VALID_LISTS}"}
 
-    # 환자를 현재 리스트에서 제거
-    patient, source_list = _find_and_remove_patient(patient_id)
+    cache = load_screen_cache()
+    # 환자 찾기 및 삭제
+    patient = None
+    source_list = None
+    for list_name in VALID_LISTS:
+        lst = cache.get(list_name, [])
+        for i, item in enumerate(lst):
+            if item.get("id") == patient_id:
+                patient = lst.pop(i)
+                source_list = list_name
+                break
+        if patient: break
+
     if patient is None:
         return {"status": "not_found", "message": "Patient not found"}
 
-    # 필드 업데이트 적용 (이동 시 추가 정보 설정 가능)
     for key, value in updates.items():
-        if key != "id":  # id는 변경 불가
-            patient[key] = value
+        if key != "id": patient[key] = value
 
-    # 대상 리스트에 추가
-    screen_cache[target_list].append(patient)
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    cache[target_list].append(patient)
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
 
     logger.info(f"Patient {patient_id} moved from {source_list} to {target_list}")
     return {"status": "success", "message": f"Patient moved to {target_list}"}
@@ -770,18 +800,25 @@ async def move_patient(data: dict):
 @app.put("/screen-update-patient/{patient_id}")
 async def update_patient(patient_id: str, data: dict):
     """
-    환자 정보를 수정합니다 (어떤 리스트에 있든 수정 가능).
+    환자 정보를 수정합니다.
     """
+    cache = load_screen_cache()
+    found = False
     for list_name in VALID_LISTS:
-        lst = screen_cache.get(list_name, [])
+        lst = cache.get(list_name, [])
         for item in lst:
             if item.get("id") == patient_id:
                 for key, value in data.items():
-                    if key != "id":  # id는 변경 불가
-                        item[key] = value
-                screen_cache["version"] = screen_cache.get("version", 0) + 1
-                logger.info(f"Patient {patient_id} updated in {list_name}")
-                return {"status": "success", "message": "Patient updated"}
+                    if key != "id": item[key] = value
+                found = True
+                break
+        if found: break
+
+    if found:
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
+        logger.info(f"Patient {patient_id} updated")
+        return {"status": "success", "message": "Patient updated"}
 
     return {"status": "not_found", "message": "Patient not found"}
 
@@ -790,10 +827,21 @@ async def delete_patient(patient_id: str):
     """
     환자를 모든 리스트에서 삭제합니다.
     """
-    patient, source_list = _find_and_remove_patient(patient_id)
-    if patient:
-        screen_cache["version"] = screen_cache.get("version", 0) + 1
-        logger.info(f"Patient {patient_id} deleted from {source_list}")
+    cache = load_screen_cache()
+    found = False
+    for list_name in VALID_LISTS:
+        lst = cache.get(list_name, [])
+        for i, item in enumerate(lst):
+            if item.get("id") == patient_id:
+                lst.pop(i)
+                found = True
+                break
+        if found: break
+
+    if found:
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
+        logger.info(f"Patient {patient_id} deleted")
         return {"status": "success", "message": "Patient deleted"}
     return {"status": "not_found", "message": "Patient not found"}
 
@@ -801,7 +849,6 @@ async def delete_patient(patient_id: str):
 async def reorder_screen(data: dict):
     """
     특정 리스트 내에서 순서를 변경합니다.
-    body: { "list_name": "...", "ids": ["id1", "id2", ...] }
     """
     list_name = data.get("list_name")
     new_order_ids = data.get("ids", [])
@@ -809,10 +856,8 @@ async def reorder_screen(data: dict):
     if not list_name or list_name not in VALID_LISTS:
         return {"status": "error", "message": f"Invalid list_name. Must be one of {VALID_LISTS}"}
 
-    if not new_order_ids:
-        return {"status": "error", "message": "No IDs provided"}
-
-    current_list = screen_cache.get(list_name, [])
+    cache = load_screen_cache()
+    current_list = cache.get(list_name, [])
     id_to_item = {item["id"]: item for item in current_list}
 
     new_list = []
@@ -820,15 +865,15 @@ async def reorder_screen(data: dict):
         if item_id in id_to_item:
             new_list.append(id_to_item[item_id])
 
-    # 누락된 아이템 보존 (안전장치)
     seen_ids = set(new_order_ids)
     for item in current_list:
         if item["id"] not in seen_ids:
             new_list.append(item)
 
-    screen_cache[list_name] = new_list
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
-    logger.info(f"Screen list '{list_name}' reordered: {len(new_list)} items")
+    cache[list_name] = new_list
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
+    logger.info(f"Screen list '{list_name}' reordered")
     return {"status": "success", "message": "List reordered"}
 
 @app.delete("/screen-clear")
@@ -836,9 +881,11 @@ async def clear_screen():
     """
     모든 리스트를 비웁니다.
     """
+    cache = load_screen_cache()
     for list_name in VALID_LISTS:
-        screen_cache[list_name] = []
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
+        cache[list_name] = []
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
     logger.info("All screen lists cleared")
     return {"status": "success", "message": "All lists cleared"}
 
@@ -848,9 +895,11 @@ async def update_screen_config(config: dict):
     전광판 설정을 업데이트합니다 (기본 문구 등).
     """
     if "default_message" in config:
-        screen_cache["default_message"] = config["default_message"]
-        screen_cache["version"] = screen_cache.get("version", 0) + 1
-        logger.info(f"Screen config updated: default_message='{config['default_message']}'")
+        cache = load_screen_cache()
+        cache["default_message"] = config["default_message"]
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
+        logger.info(f"Screen config updated")
         return {"status": "success", "message": "Config updated"}
     return {"status": "error", "message": "Invalid config"}
 
@@ -861,33 +910,39 @@ async def update_screen_config(config: dict):
 @app.get("/screen-doctors")
 async def get_doctors():
     """등록된 의사 목록을 반환합니다."""
-    return screen_cache.get("doctors", [])
+    cache = load_screen_cache()
+    return cache.get("doctors", [])
 
 @app.post("/screen-doctors")
 async def add_doctor(data: dict):
     """
     의사를 등록합니다.
-    body: { "name": "Dr. Smith" }
     """
     name = data.get("name", "").strip()
-    if not name:
-        return {"status": "error", "message": "Doctor name is required"}
+    if not name: return {"status": "error", "message": "Doctor name is required"}
 
-    if name in screen_cache.get("doctors", []):
+    cache = load_screen_cache()
+    doctors = cache.get("doctors", [])
+    if name in doctors:
         return {"status": "error", "message": "Doctor already registered"}
 
-    screen_cache.setdefault("doctors", []).append(name)
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    doctors.append(name)
+    cache["doctors"] = doctors
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
     logger.info(f"Doctor registered: {name}")
     return {"status": "success", "message": f"Doctor '{name}' registered"}
 
 @app.delete("/screen-doctors/{doctor_name}")
 async def delete_doctor(doctor_name: str):
     """의사를 목록에서 삭제합니다."""
-    doctors = screen_cache.get("doctors", [])
+    cache = load_screen_cache()
+    doctors = cache.get("doctors", [])
     if doctor_name in doctors:
         doctors.remove(doctor_name)
-        screen_cache["version"] = screen_cache.get("version", 0) + 1
+        cache["doctors"] = doctors
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
         logger.info(f"Doctor removed: {doctor_name}")
         return {"status": "success", "message": f"Doctor '{doctor_name}' removed"}
     return {"status": "not_found", "message": "Doctor not found"}
