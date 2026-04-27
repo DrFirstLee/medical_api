@@ -264,19 +264,30 @@ class ConsultationSession(BaseModel):
 # In-memory storage (Replace with Database for production)
 sessions_db = {}
 
-# Signboard Cache (In-memory)
+# ──────────────────────────────────────────────
+# Signboard 3-Tier Cache (In-memory)
+# ──────────────────────────────────────────────
 screen_cache = {
-    "queue": [],
+    "internal_waitlist": [],      # 1단: 내부 대기리스트
+    "waiting_reservation": [],    # 2단-a: 진짜 대기 (예약)
+    "waiting_walkin": [],         # 2단-b: 진짜 대기 (워크인)
+    "screen_list": [],            # 3단: 화면 리스트 (Call 화면)
+    "doctors": [],                # 등록된 의사 목록
     "default_message": "Welcome to Swift Medical Clinic",
     "version": 0
 }
 
-class ScreenData(BaseModel):
+# 유효한 리스트 이름
+VALID_LISTS = ["internal_waitlist", "waiting_reservation", "waiting_walkin", "screen_list"]
+
+class PatientData(BaseModel):
     firstName: str
     lastName: str
-    room: str
-    note: Optional[str] = ""
-    timestamp: Optional[str] = ""
+    internalNote: Optional[str] = ""
+    externalNote: Optional[str] = ""
+    type: Optional[str] = "walkin"       # "reservation" or "walkin"
+    doctor: Optional[str] = ""
+    room: Optional[str] = ""
 
 # --- Endpoints ---
 
@@ -651,17 +662,30 @@ async def translate(req: TranslateRequest):
     return result
 
 def _screen_payload():
-    """현재 screen_cache의 데이터를 클라이언트 전송용 dict로 반환합니다."""
+    """현재 screen_cache의 전체 데이터를 클라이언트 전송용 dict로 반환합니다."""
     return {
-        "queue": screen_cache.get("queue", []),
+        "internal_waitlist": screen_cache.get("internal_waitlist", []),
+        "waiting_reservation": screen_cache.get("waiting_reservation", []),
+        "waiting_walkin": screen_cache.get("waiting_walkin", []),
+        "screen_list": screen_cache.get("screen_list", []),
+        "doctors": screen_cache.get("doctors", []),
         "default_message": screen_cache.get("default_message", "Welcome to Swift Medical Clinic"),
         "version": screen_cache.get("version", 0)
     }
 
+def _find_and_remove_patient(patient_id: str):
+    """모든 리스트에서 환자를 찾아 제거하고 (item, list_name) 반환. 없으면 (None, None)."""
+    for list_name in VALID_LISTS:
+        lst = screen_cache.get(list_name, [])
+        for i, item in enumerate(lst):
+            if item.get("id") == patient_id:
+                return lst.pop(i), list_name
+    return None, None
+
 @app.get("/screen-data")
 async def get_screen_data():
     """
-    전광판(index.html)에서 서버에 저장된 데이터를 가져옵니다.
+    전체 전광판 데이터를 가져옵니다 (3단 리스트 + 의사 목록).
     """
     return _screen_payload()
 
@@ -693,6 +717,131 @@ async def screen_events(request: Request):
         }
     )
 
+@app.post("/screen-add-patient")
+async def add_patient(data: PatientData):
+    """
+    새 환자를 1차 대기리스트(internal_waitlist)에 추가합니다.
+    """
+    data_dict = data.dict()
+    data_dict["id"] = str(uuid.uuid4())
+    data_dict["timestamp"] = datetime.datetime.now().isoformat()
+    data_dict["server_time"] = datetime.datetime.now().isoformat()
+
+    screen_cache["internal_waitlist"].append(data_dict)
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
+
+    logger.info(f"Patient added to internal_waitlist: {data.firstName} {data.lastName}")
+    return {"status": "success", "message": "Patient added", "id": data_dict["id"]}
+
+@app.post("/screen-move-patient")
+async def move_patient(data: dict):
+    """
+    환자를 다른 리스트로 이동합니다.
+    body: { "patient_id": "...", "target_list": "waiting_reservation|waiting_walkin|screen_list|internal_waitlist",
+            "updates": { ... optional field updates ... } }
+    """
+    patient_id = data.get("patient_id")
+    target_list = data.get("target_list")
+    updates = data.get("updates", {})
+
+    if not patient_id or not target_list:
+        return {"status": "error", "message": "patient_id and target_list are required"}
+
+    if target_list not in VALID_LISTS:
+        return {"status": "error", "message": f"Invalid target_list. Must be one of {VALID_LISTS}"}
+
+    # 환자를 현재 리스트에서 제거
+    patient, source_list = _find_and_remove_patient(patient_id)
+    if patient is None:
+        return {"status": "not_found", "message": "Patient not found"}
+
+    # 필드 업데이트 적용 (이동 시 추가 정보 설정 가능)
+    for key, value in updates.items():
+        if key != "id":  # id는 변경 불가
+            patient[key] = value
+
+    # 대상 리스트에 추가
+    screen_cache[target_list].append(patient)
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
+
+    logger.info(f"Patient {patient_id} moved from {source_list} to {target_list}")
+    return {"status": "success", "message": f"Patient moved to {target_list}"}
+
+@app.put("/screen-update-patient/{patient_id}")
+async def update_patient(patient_id: str, data: dict):
+    """
+    환자 정보를 수정합니다 (어떤 리스트에 있든 수정 가능).
+    """
+    for list_name in VALID_LISTS:
+        lst = screen_cache.get(list_name, [])
+        for item in lst:
+            if item.get("id") == patient_id:
+                for key, value in data.items():
+                    if key != "id":  # id는 변경 불가
+                        item[key] = value
+                screen_cache["version"] = screen_cache.get("version", 0) + 1
+                logger.info(f"Patient {patient_id} updated in {list_name}")
+                return {"status": "success", "message": "Patient updated"}
+
+    return {"status": "not_found", "message": "Patient not found"}
+
+@app.delete("/screen-delete-patient/{patient_id}")
+async def delete_patient(patient_id: str):
+    """
+    환자를 모든 리스트에서 삭제합니다.
+    """
+    patient, source_list = _find_and_remove_patient(patient_id)
+    if patient:
+        screen_cache["version"] = screen_cache.get("version", 0) + 1
+        logger.info(f"Patient {patient_id} deleted from {source_list}")
+        return {"status": "success", "message": "Patient deleted"}
+    return {"status": "not_found", "message": "Patient not found"}
+
+@app.post("/screen-reorder")
+async def reorder_screen(data: dict):
+    """
+    특정 리스트 내에서 순서를 변경합니다.
+    body: { "list_name": "...", "ids": ["id1", "id2", ...] }
+    """
+    list_name = data.get("list_name")
+    new_order_ids = data.get("ids", [])
+
+    if not list_name or list_name not in VALID_LISTS:
+        return {"status": "error", "message": f"Invalid list_name. Must be one of {VALID_LISTS}"}
+
+    if not new_order_ids:
+        return {"status": "error", "message": "No IDs provided"}
+
+    current_list = screen_cache.get(list_name, [])
+    id_to_item = {item["id"]: item for item in current_list}
+
+    new_list = []
+    for item_id in new_order_ids:
+        if item_id in id_to_item:
+            new_list.append(id_to_item[item_id])
+
+    # 누락된 아이템 보존 (안전장치)
+    seen_ids = set(new_order_ids)
+    for item in current_list:
+        if item["id"] not in seen_ids:
+            new_list.append(item)
+
+    screen_cache[list_name] = new_list
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    logger.info(f"Screen list '{list_name}' reordered: {len(new_list)} items")
+    return {"status": "success", "message": "List reordered"}
+
+@app.delete("/screen-clear")
+async def clear_screen():
+    """
+    모든 리스트를 비웁니다.
+    """
+    for list_name in VALID_LISTS:
+        screen_cache[list_name] = []
+    screen_cache["version"] = screen_cache.get("version", 0) + 1
+    logger.info("All screen lists cleared")
+    return {"status": "success", "message": "All lists cleared"}
+
 @app.post("/screen-config")
 async def update_screen_config(config: dict):
     """
@@ -705,74 +854,43 @@ async def update_screen_config(config: dict):
         return {"status": "success", "message": "Config updated"}
     return {"status": "error", "message": "Invalid config"}
 
-@app.post("/screen-update")
-async def update_screen(data: ScreenData):
-    """
-    관리페이지(manage.html)에서 새로운 전광판 데이터를 서버 캐시에 추가합니다.
-    """
-    data_dict = data.dict()
-    data_dict["id"] = str(uuid.uuid4())
-    data_dict["server_time"] = datetime.datetime.now().isoformat()
-    
-    if "queue" not in screen_cache:
-        screen_cache["queue"] = []
-    screen_cache["queue"].append(data_dict)
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
-    
-    logger.info(f"Screen updated: {data.firstName} {data.lastName} added to queue")
-    return {"status": "success", "message": "Screen data added", "id": data_dict["id"]}
+# ──────────────────────────────────────────────
+# Doctor Management
+# ──────────────────────────────────────────────
 
-@app.delete("/screen-delete/{item_id}")
-async def delete_screen(item_id: str):
-    """
-    특정 전광판 데이터를 큐에서 제거합니다.
-    """
-    if "queue" in screen_cache:
-        initial_length = len(screen_cache["queue"])
-        screen_cache["queue"] = [item for item in screen_cache["queue"] if item.get("id") != item_id]
-        if len(screen_cache["queue"]) < initial_length:
-            screen_cache["version"] = screen_cache.get("version", 0) + 1
-            logger.info(f"Screen item deleted: {item_id}")
-            return {"status": "success", "message": "Item deleted"}
-    return {"status": "not_found", "message": "Item not found"}
+@app.get("/screen-doctors")
+async def get_doctors():
+    """등록된 의사 목록을 반환합니다."""
+    return screen_cache.get("doctors", [])
 
-@app.delete("/screen-clear")
-async def clear_screen():
+@app.post("/screen-doctors")
+async def add_doctor(data: dict):
     """
-    전광판 큐를 모두 비웁니다.
+    의사를 등록합니다.
+    body: { "name": "Dr. Smith" }
     """
-    screen_cache["queue"] = []
-    screen_cache["version"] = screen_cache.get("version", 0) + 1
-    logger.info("Screen queue cleared")
-    return {"status": "success", "message": "Queue cleared"}
+    name = data.get("name", "").strip()
+    if not name:
+        return {"status": "error", "message": "Doctor name is required"}
 
-@app.post("/screen-reorder")
-async def reorder_screen(data: dict):
-    """
-    Reorder the signboard queue based on a list of IDs.
-    """
-    new_order_ids = data.get("ids", [])
-    if not new_order_ids:
-        return {"status": "error", "message": "No IDs provided"}
-    
-    current_queue = screen_cache.get("queue", [])
-    id_to_item = {item["id"]: item for item in current_queue}
-    
-    new_queue = []
-    for item_id in new_order_ids:
-        if item_id in id_to_item:
-            new_queue.append(id_to_item[item_id])
-            
-    # Add any items that were not in the reorder list (safety measure)
-    seen_ids = set(new_order_ids)
-    for item in current_queue:
-        if item["id"] not in seen_ids:
-            new_queue.append(item)
-            
-    screen_cache["queue"] = new_queue
+    if name in screen_cache.get("doctors", []):
+        return {"status": "error", "message": "Doctor already registered"}
+
+    screen_cache.setdefault("doctors", []).append(name)
     screen_cache["version"] = screen_cache.get("version", 0) + 1
-    logger.info(f"Screen queue reordered: {len(new_queue)} items")
-    return {"status": "success", "message": "Queue reordered"}
+    logger.info(f"Doctor registered: {name}")
+    return {"status": "success", "message": f"Doctor '{name}' registered"}
+
+@app.delete("/screen-doctors/{doctor_name}")
+async def delete_doctor(doctor_name: str):
+    """의사를 목록에서 삭제합니다."""
+    doctors = screen_cache.get("doctors", [])
+    if doctor_name in doctors:
+        doctors.remove(doctor_name)
+        screen_cache["version"] = screen_cache.get("version", 0) + 1
+        logger.info(f"Doctor removed: {doctor_name}")
+        return {"status": "success", "message": f"Doctor '{doctor_name}' removed"}
+    return {"status": "not_found", "message": "Doctor not found"}
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
