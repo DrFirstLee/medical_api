@@ -853,6 +853,27 @@ async def delete_patient(patient_id: str):
         return {"status": "success", "message": "Patient deleted"}
     return {"status": "not_found", "message": "Patient not found"}
 
+@app.post("/screen-recall/{patient_id}")
+async def recall_patient(patient_id: str):
+    """
+    환자를 다시 호출합니다 (버전만 올려서 화면에서 강조되게 함).
+    """
+    cache = load_screen_cache()
+    found = False
+    for item in cache.get("screen_list", []):
+        if item.get("id") == patient_id:
+            item["last_called_at"] = datetime.datetime.now().isoformat()
+            found = True
+            break
+    
+    if found:
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
+        logger.info(f"Patient {patient_id} recalled")
+        return {"status": "success", "message": "Patient recalled"}
+    
+    return {"status": "not_found", "message": "Patient in screen_list not found"}
+
 @app.post("/screen-reorder")
 async def reorder_screen(data: dict):
     """
