@@ -16,3 +16,4 @@ cryptography
 langdetect
 apscheduler
 pytz
+tzdata
