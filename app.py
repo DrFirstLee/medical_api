@@ -273,7 +273,13 @@ def load_screen_cache():
     if os.path.exists(SCREEN_CACHE_FILE):
         try:
             with open(SCREEN_CACHE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # Ensure defaults for doctors and rooms if missing
+                if "doctors" not in data:
+                    data["doctors"] = ["Dr. Oyebolu", "Dr. Onyekwena"]
+                if "rooms" not in data:
+                    data["rooms"] = ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"]
+                return data
         except Exception as e:
             logger.error(f"Error loading screen cache file: {e}")
     
@@ -284,6 +290,7 @@ def load_screen_cache():
         "waiting_walkin": [],         # 2단-b: 진짜 대기 (워크인)
         "screen_list": [],            # 3단: 화면 리스트 (Call 화면)
         "doctors": ["Dr. Oyebolu", "Dr. Onyekwena"], # 등록된 의사 목록
+        "rooms": ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"], # 등록된 진료실 목록
         "default_message": "Welcome to Swift Medical Clinic",
         "version": 0
     }
@@ -690,6 +697,7 @@ def _screen_payload():
         "waiting_walkin": screen_cache.get("waiting_walkin", []),
         "screen_list": screen_cache.get("screen_list", []),
         "doctors": screen_cache.get("doctors", []),
+        "rooms": screen_cache.get("rooms", ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"]),
         "default_message": screen_cache.get("default_message", "Welcome to Swift Medical Clinic"),
         "version": screen_cache.get("version", 0)
     }
@@ -946,6 +954,50 @@ async def delete_doctor(doctor_name: str):
         logger.info(f"Doctor removed: {doctor_name}")
         return {"status": "success", "message": f"Doctor '{doctor_name}' removed"}
     return {"status": "not_found", "message": "Doctor not found"}
+
+# ──────────────────────────────────────────────
+# Room Management
+# ──────────────────────────────────────────────
+
+@app.get("/screen-rooms")
+async def get_rooms():
+    """등록된 진료실 목록을 반환합니다."""
+    cache = load_screen_cache()
+    return cache.get("rooms", ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"])
+
+@app.post("/screen-rooms")
+async def add_room(data: dict):
+    """
+    진료실을 등록합니다.
+    """
+    name = data.get("name", "").strip()
+    if not name: return {"status": "error", "message": "Room name is required"}
+
+    cache = load_screen_cache()
+    rooms = cache.get("rooms", ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"])
+    if name in rooms:
+        return {"status": "error", "message": "Room already exists"}
+
+    rooms.append(name)
+    cache["rooms"] = rooms
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
+    logger.info(f"Room registered: {name}")
+    return {"status": "success", "message": f"Room '{name}' registered"}
+
+@app.delete("/screen-rooms/{room_name}")
+async def delete_room(room_name: str):
+    """진료실을 목록에서 삭제합니다."""
+    cache = load_screen_cache()
+    rooms = cache.get("rooms", ["Room 1", "Room 2", "Room 3", "Room 4", "Room 5"])
+    if room_name in rooms:
+        rooms.remove(room_name)
+        cache["rooms"] = rooms
+        cache["version"] = cache.get("version", 0) + 1
+        save_screen_cache(cache)
+        logger.info(f"Room removed: {room_name}")
+        return {"status": "success", "message": f"Room '{room_name}' removed"}
+    return {"status": "not_found", "message": "Room not found"}
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
