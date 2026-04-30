@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from func import db_log_token_usage, db_log_token_usage_async
 from db_dll import delete_old_logs
 from apscheduler.schedulers.background import BackgroundScheduler
+import pytz
 
 # SQLAlchemy & SQLAdmin
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
@@ -144,7 +145,8 @@ async def startup_event():
     # ──────────────────────────────────────────────
     # Background Scheduler (Cleanup old logs)
     # ──────────────────────────────────────────────
-    scheduler = BackgroundScheduler()
+    # Explicitly set timezone to avoid tzlocal() errors in Docker
+    scheduler = BackgroundScheduler(timezone=pytz.timezone("America/Calgary"))
     # 매일 정오(12:00)에 48시간 지난 로그 삭제
     scheduler.add_job(delete_old_logs, 'cron', hour=12, minute=0)
     scheduler.start()

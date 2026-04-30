@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies if any
 RUN apt-get update && apt-get install -y \
     build-essential \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
