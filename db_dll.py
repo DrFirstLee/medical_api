@@ -65,5 +65,34 @@ def create_table():
             cursor.close()
             connection.close()
 
+def delete_old_logs():
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        cursor = connection.cursor()
+        
+        # 48시간 이상 된 데이터 삭제
+        delete_query = "DELETE FROM token_usage_logs WHERE timestamp < NOW() - INTERVAL 48 HOUR"
+        cursor.execute(delete_query)
+        connection.commit()
+        print(f"Old logs deleted successfully. Rows affected: {cursor.rowcount}")
+        
+    except Exception as e:
+        print(f"Error deleting old logs: {e}")
+    finally:
+        if 'connection' in locals() and connection.is_connected():
+            cursor.close()
+            connection.close()
+
 if __name__ == "__main__":
-    create_table()
+    # 스케줄러 등에 의해 직접 실행될 때를 대비해 create_table과 delete_old_logs 호출 가능
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "cleanup":
+        delete_old_logs()
+    else:
+        create_table()

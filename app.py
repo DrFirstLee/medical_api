@@ -22,6 +22,8 @@ import uuid
 # from openai import OpenAI (Removed to avoid dependency)
 from dotenv import load_dotenv
 from func import db_log_token_usage, db_log_token_usage_async
+from db_dll import delete_old_logs
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # SQLAlchemy & SQLAdmin
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
@@ -138,6 +140,18 @@ async def startup_event():
         timeout=60.0,
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
     )
+    
+    # ──────────────────────────────────────────────
+    # Background Scheduler (Cleanup old logs)
+    # ──────────────────────────────────────────────
+    scheduler = BackgroundScheduler()
+    # 매일 정오(12:00)에 48시간 지난 로그 삭제
+    scheduler.add_job(delete_old_logs, 'cron', hour=12, minute=0)
+    scheduler.start()
+    logger.info("Background scheduler started (Daily cleanup at 12:00)")
+    
+    # 시작 시 1회 즉시 실행 (선택 사항)
+    # delete_old_logs()
 
 @app.on_event("shutdown")
 async def shutdown_event():

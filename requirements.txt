@@ -14,3 +14,4 @@ sqladmin
 itsdangerous
 cryptography
 langdetect
+apscheduler
