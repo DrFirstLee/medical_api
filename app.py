@@ -347,6 +347,64 @@ async def home():
     Service home page (main.html).
     """
     return FileResponse("templates/main.html")
+
+@app.get("/translate", response_class=FileResponse)
+async def translate_page():
+    """
+    Real-time bilingual translation page.
+    """
+    return FileResponse("templates/translate.html")
+
+@app.get("/token")
+async def get_realtime_token(sourceLanguage: str = "en", targetLanguage: str = "en"):
+    """
+    Endpoint to mint an ephemeral token for OpenAI Realtime Translation.
+    """
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI API key not configured")
+
+    payload = {
+        "session": {
+            "model": "gpt-realtime-translate",
+            "audio": {
+                "input": {
+                    "transcription": {
+                        "model": "gpt-realtime-whisper"
+                    },
+                    "noise_reduction": {
+                        "type": "near_field"
+                    }
+                },
+                "output": {
+                    "language": targetLanguage
+                }
+            }
+        }
+    }
+
+    try:
+        response = await openai_request_with_retry(
+            url="https://api.openai.com/v1/realtime/translations/client_secrets",
+            headers={
+                "Content-Type": "application/json",
+                "OpenAI-Safety-Identifier": "hashed-user-id"
+            },
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Token generation error: {response.text}")
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+            
+        data = response.json()
+        token_value = data.get("value") or (data.get("client_secret") and data["client_secret"].get("value"))
+        if not token_value:
+            raise HTTPException(status_code=500, detail="Token missing in response")
+            
+        return {"token": token_value}
+    except Exception as e:
+        logger.error(f"Server error generating token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate token")
 # ──────────────────────────────────────────────
 # Health & Status Endpoints
 # ──────────────────────────────────────────────
