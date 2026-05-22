@@ -1003,14 +1003,13 @@ async def update_screen_config(config: dict):
     """
     전광판 설정을 업데이트합니다 (기본 문구 등).
     """
-    if "default_message" in config:
-        cache = load_screen_cache()
-        cache["default_message"] = config["default_message"]
-        cache["version"] = cache.get("version", 0) + 1
-        save_screen_cache(cache)
-        logger.info(f"Screen config updated")
-        return {"status": "success", "message": "Config updated"}
-    return {"status": "error", "message": "Invalid config"}
+    cache = load_screen_cache()
+    for key, value in config.items():
+        cache[key] = value
+    cache["version"] = cache.get("version", 0) + 1
+    save_screen_cache(cache)
+    logger.info(f"Screen config updated: {config}")
+    return {"status": "success", "message": "Config updated"}
 
 # ──────────────────────────────────────────────
 # Doctor Management
