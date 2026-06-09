@@ -456,7 +456,6 @@
 
             <!-- Controls & Level Meter -->
             <div class="control-panel">
-                <button class="start-btn" id="startBtn">Start</button>
                 <div class="status-label" id="statusLabel">Ready</div>
                 <button class="tts-btn" id="ttsToggleBtn" title="TTS On/Off">🔊</button>
 
@@ -559,9 +558,13 @@
             if (langTapRightBtn) langTapRightBtn.textContent = `Speak: ${toText}`;
         }
 
+        function isConnected() {
+            return !!(pc && dc && dc.readyState === 'open');
+        }
+
         async function restartWithCurrentLanguages() {
             // Restart to fully apply both source/target on the server
-            if (startBtn.classList.contains('active')) {
+            if (isConnected()) {
                 stop();
                 await new Promise(r => setTimeout(r, 300));
                 await start();
@@ -609,13 +612,14 @@
         // ===== State Transitions =====
         function enterListeningState() {
             interpreterState = 'LISTENING';
-            unmuteMicrophone();
+            // Push-to-talk: keep mic muted while idle
+            muteMicrophone();
             silenceStartTime = null;
             smoothedVolume = 0;
             lastOutputTranscriptTime = 0;
-            statusLabel.textContent = 'Listening';
+            statusLabel.textContent = 'Listening (PTT)';
             statusLabel.style.color = '#10b981';
-            console.log('[STATE] → LISTENING');
+            console.log('[STATE] → LISTENING (PTT)');
         }
 
         function enterSpeakingState() {
@@ -669,8 +673,8 @@
                 outputTranscriptDoneTimer = null;
             }
 
-            console.log('[STATE] Translation finished, swapping languages...');
-            swapLanguagesAndNotify();
+            // Do NOT auto-swap languages; remain in the same direction until user changes it
+            console.log('[STATE] Translation finished');
             enterListeningState();
         }
 
@@ -839,7 +843,7 @@
         // ===== Start / Stop =====
         async function start() {
             try {
-                startBtn.disabled = true;
+            if (startBtn) startBtn.disabled = true;
                 statusLabel.textContent = 'Connecting';
                 statusLabel.style.color = '';
 
@@ -848,7 +852,7 @@
 
                 if (fromLang === toLang) {
                     alert('From과 To 언어는 다르게 선택해야 합니다!');
-                    startBtn.disabled = false;
+                    if (startBtn) startBtn.disabled = false;
                     statusLabel.textContent = 'Ready';
                     return;
                 }
@@ -894,10 +898,7 @@
 
                         if (event.type === 'session.input_transcript.delta') {
                             updateMessage(event.delta, false);
-                            // User is speaking → enter SPEAKING state (if not already)
-                            if (interpreterState === 'LISTENING') {
-                                enterSpeakingState();
-                            }
+                            // In PTT mode we already control SPEAKING by button press
                         }
 
                         if (event.type === 'session.input_transcript.done') {
@@ -936,9 +937,11 @@
                 await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
 
                 // Connected
-                startBtn.textContent = 'Stop';
-                startBtn.className = 'start-btn active';
-                startBtn.disabled = false;
+                if (startBtn) {
+                    startBtn.textContent = 'Stop';
+                    startBtn.className = 'start-btn active';
+                    startBtn.disabled = false;
+                }
 
                 fromSelect.disabled = true;
                 toSelect.disabled = true;
@@ -987,9 +990,11 @@
 
             audioOutput.srcObject = null;
 
-            startBtn.textContent = 'Start';
-            startBtn.className = 'start-btn';
-            startBtn.disabled = false;
+            if (startBtn) {
+                startBtn.textContent = 'Start';
+                startBtn.className = 'start-btn';
+                startBtn.disabled = false;
+            }
             statusLabel.textContent = 'Ready';
             statusLabel.style.color = '';
 
@@ -1010,13 +1015,7 @@
         }
 
         // ===== Event Listeners =====
-        startBtn.addEventListener('click', () => {
-            if (startBtn.classList.contains('active')) {
-                stop();
-            } else {
-                start();
-            }
-        });
+        // No Start button in PTT-only UI
 
         exchangeBtn.addEventListener('click', () => {
             const temp = fromSelect.value;
@@ -1036,9 +1035,66 @@
             }
         });
 
-        // Tap buttons bind
-        langTapLeftBtn.addEventListener('click', () => tapLanguage('left'));
-        langTapRightBtn.addEventListener('click', () => tapLanguage('right'));
+        // ===== Push-To-Talk (PTT) logic =====
+        let isPTTActive = false;
+
+        async function ensureDirection(which) {
+            const wasLeftFrom = fromSelect.value; // store
+            const wasRightTo = toSelect.value;
+
+            let changed = false;
+            if (which === 'left') {
+                // Speak left direction: keep current from→to
+            } else if (which === 'right') {
+                // Speak right direction: swap
+                const tmp = fromSelect.value;
+                fromSelect.value = toSelect.value;
+                toSelect.value = tmp;
+                changed = true;
+                updateLangTapButtons();
+            }
+
+            if (!isConnected()) {
+                await start();
+            } else if (changed) {
+                await restartWithCurrentLanguages();
+            }
+        }
+
+        async function beginPTT(which) {
+            try {
+                await ensureDirection(which);
+                // Start capturing
+                isPTTActive = true;
+                unmuteMicrophone();
+                enterSpeakingState();
+                // Cancel translating timers if any
+                if (translatingWatchdog) { clearTimeout(translatingWatchdog); translatingWatchdog = null; }
+                if (translationFinishedTimeout) { clearTimeout(translationFinishedTimeout); translationFinishedTimeout = null; }
+                if (outputTranscriptDoneTimer) { clearTimeout(outputTranscriptDoneTimer); outputTranscriptDoneTimer = null; }
+            } catch (e) {
+                console.error('beginPTT error:', e);
+            }
+        }
+
+        function endPTT() {
+            if (!isPTTActive) return;
+            isPTTActive = false;
+            muteMicrophone();
+            // Immediately transition to translating (no need to wait for silence)
+            enterTranslatingState();
+        }
+
+        // Bind PTT with pointer events (works for mouse/touch/pen)
+        langTapLeftBtn.addEventListener('pointerdown', () => beginPTT('left'));
+        langTapLeftBtn.addEventListener('pointerup', endPTT);
+        langTapLeftBtn.addEventListener('pointercancel', endPTT);
+        langTapLeftBtn.addEventListener('pointerleave', (e) => { if (e.pressure === 0) endPTT(); });
+
+        langTapRightBtn.addEventListener('pointerdown', () => beginPTT('right'));
+        langTapRightBtn.addEventListener('pointerup', endPTT);
+        langTapRightBtn.addEventListener('pointercancel', endPTT);
+        langTapRightBtn.addEventListener('pointerleave', (e) => { if (e.pressure === 0) endPTT(); });
 
         // Keep tap button labels in sync when the selects change (if user uses dropdowns)
         fromSelect.addEventListener('change', updateLangTapButtons);
