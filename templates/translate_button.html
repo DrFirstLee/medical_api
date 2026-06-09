@@ -141,25 +141,50 @@
         }
 
         .lang-tap-btn {
-            border: 1px solid #cbd5e1;
-            background-color: #ffffff;
-            padding: 8px 14px;
-            border-radius: 999px;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            border-radius: 14px;
             font-size: 14px;
-            font-weight: 600;
-            color: #1e293b;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            color: #0f172a;
             cursor: pointer;
-            transition: all 0.15s ease-in-out;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, background 0.2s ease;
             user-select: none;
+            box-shadow: 0 2px 6px rgba(2, 6, 23, 0.08);
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
+        }
+
+        .lang-tap-btn.doctor-btn {
+            color: #fff;
+            background: linear-gradient(135deg, #3b82f6, #60a5fa);
+            box-shadow: 0 6px 14px rgba(37, 99, 235, 0.25);
+        }
+
+        .lang-tap-btn.patient-btn {
+            color: #fff;
+            background: linear-gradient(135deg, #a855f7, #f472b6);
+            box-shadow: 0 6px 14px rgba(168, 85, 247, 0.25);
         }
 
         .lang-tap-btn:hover {
-            background-color: #f8fafc;
             transform: translateY(-1px);
+            filter: brightness(1.02);
         }
 
         .lang-tap-btn:active {
             transform: translateY(0);
+            filter: brightness(0.98);
+            box-shadow: 0 2px 6px rgba(2, 6, 23, 0.12) inset;
+        }
+
+        .lang-tap-btn .emoji {
+            font-size: 16px;
+            line-height: 1;
         }
 
         /* Workspace Grid */
@@ -338,13 +363,19 @@
             }
         }
 
+        /* Role-based alignment for bubbles */
         .message-bubble {
             display: flex;
             flex-direction: column;
             margin-bottom: 24px;
             max-width: 85%;
-            align-self: flex-start;
             animation: fadeIn 0.25s ease-out;
+        }
+        .message-bubble.left { /* Doctor */
+            align-self: flex-start;
+        }
+        .message-bubble.right { /* Patient */
+            align-self: flex-end;
         }
 
         .message-header {
@@ -420,7 +451,7 @@
                     <option value="de">German</option>
                 </select>
                 <div class="lang-tap-wrap">
-                    <button id="langTapLeft" class="lang-tap-btn" title="의사(Doctor)로 말하기">Speak: Doctor</button>
+                    <button id="langTapLeft" class="lang-tap-btn doctor-btn" title="의사(Doctor)로 말하기">👨‍⚕️ Speak: Doctor</button>
                 </div>
             </div>
 
@@ -437,7 +468,7 @@
                     <option value="de">German</option>
                 </select>
                 <div class="lang-tap-wrap">
-                    <button id="langTapRight" class="lang-tap-btn" title="환자(Patient)로 말하기">Speak: Patient</button>
+                    <button id="langTapRight" class="lang-tap-btn patient-btn" title="환자(Patient)로 말하기">🧑 Speak: Patient</button>
                 </div>
             </div>
         </div>
@@ -520,8 +551,8 @@
         function updateLangTapButtons() {
             const docText = fromSelect.options[fromSelect.selectedIndex].text;
             const patText = toSelect.options[toSelect.selectedIndex].text;
-            if (langTapLeftBtn) langTapLeftBtn.textContent = `Speak: Doctor (${docText})`;
-            if (langTapRightBtn) langTapRightBtn.textContent = `Speak: Patient (${patText})`;
+            if (langTapLeftBtn) langTapLeftBtn.innerHTML = `👨‍⚕️ <span>Doctor (${docText})</span>`;
+            if (langTapRightBtn) langTapRightBtn.innerHTML = `🧑 <span>Patient (${patText})</span>`;
         }
 
         function isConnected() {
@@ -759,7 +790,7 @@
 
             if (!activeBubble) {
                 activeBubble = document.createElement('div');
-                activeBubble.className = 'message-bubble';
+                activeBubble.className = 'message-bubble ' + (currentDirection === 'doc-to-pat' ? 'left' : 'right');
 
                 const header = document.createElement('div');
                 header.className = 'message-header';
