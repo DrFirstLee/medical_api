@@ -409,7 +409,7 @@
         <!-- Top Bar with Dropdowns -->
         <div class="header-card">
             <div class="lang-group left">
-                <span class="lang-label">From</span>
+                <span class="lang-label">Doctor</span>
                 <select id="fromLanguage" class="lang-select">
                     <option value="en" selected>English</option>
                     <option value="ko">Korean</option>
@@ -420,16 +420,13 @@
                     <option value="de">German</option>
                 </select>
                 <div class="lang-tap-wrap">
-                    <button id="langTapLeft" class="lang-tap-btn" title="이 언어로 말하기">Speak: English</button>
+                    <button id="langTapLeft" class="lang-tap-btn" title="의사(Doctor)로 말하기">Speak: Doctor</button>
                 </div>
             </div>
 
-            <div class="exchange-btn" id="exchangeBtn" title="언어 서로 바꾸기">
-                ⇄
-            </div>
 
             <div class="lang-group right">
-                <span class="lang-label">To</span>
+                <span class="lang-label">Patient</span>
                 <select id="toLanguage" class="lang-select">
                     <option value="ko" selected>Korean</option>
                     <option value="en">English</option>
@@ -440,7 +437,7 @@
                     <option value="de">German</option>
                 </select>
                 <div class="lang-tap-wrap">
-                    <button id="langTapRight" class="lang-tap-btn" title="이 언어로 말하기">Speak: Korean</button>
+                    <button id="langTapRight" class="lang-tap-btn" title="환자(Patient)로 말하기">Speak: Patient</button>
                 </div>
             </div>
         </div>
@@ -505,7 +502,7 @@
         const historyCard = document.getElementById('historyCard');
         const fromSelect = document.getElementById('fromLanguage');
         const toSelect = document.getElementById('toLanguage');
-        const exchangeBtn = document.getElementById('exchangeBtn');
+        // exchange button removed (positions fixed)
         const volumeFill = document.getElementById('volumeFill');
         const volumeIndicatorLine = document.getElementById('volumeIndicatorLine');
         const audioOutput = document.getElementById('audioOutput');
@@ -517,50 +514,21 @@
         let activeBubble = null;
 
         // ===== Language Swap =====
-        function swapLanguagesAndNotify() {
-            const temp = fromSelect.value;
-            fromSelect.value = toSelect.value;
-            toSelect.value = temp;
-
-            fromSelect.classList.remove('highlight-blink');
-            toSelect.classList.remove('highlight-blink');
-            void fromSelect.offsetWidth;
-            void toSelect.offsetWidth;
-            fromSelect.classList.add('highlight-blink');
-            toSelect.classList.add('highlight-blink');
-
-            activeBubble = null;
-
-            if (dc && dc.readyState === 'open') {
-                const newTargetLang = toSelect.value;
-                dc.send(JSON.stringify({
-                    type: 'session.update',
-                    session: {
-                        audio: {
-                            output: {
-                                language: newTargetLang
-                            }
-                        }
-                    }
-                }));
-                console.log(`[SWAP] Target language updated to: ${newTargetLang}`);
-            }
-
-            // Update tap button labels
-            updateLangTapButtons();
-        }
+        // swap removed — Doctor on left, Patient on right (fixed)
 
         // ===== Language Tap (choose direction by tapping a language) =====
         function updateLangTapButtons() {
-            const fromText = fromSelect.options[fromSelect.selectedIndex].text;
-            const toText = toSelect.options[toSelect.selectedIndex].text;
-            if (langTapLeftBtn) langTapLeftBtn.textContent = `Speak: ${fromText}`;
-            if (langTapRightBtn) langTapRightBtn.textContent = `Speak: ${toText}`;
+            const docText = fromSelect.options[fromSelect.selectedIndex].text;
+            const patText = toSelect.options[toSelect.selectedIndex].text;
+            if (langTapLeftBtn) langTapLeftBtn.textContent = `Speak: Doctor (${docText})`;
+            if (langTapRightBtn) langTapRightBtn.textContent = `Speak: Patient (${patText})`;
         }
 
         function isConnected() {
             return !!(pc && dc && dc.readyState === 'open');
         }
+
+        let currentDirection = 'doc-to-pat'; // or 'pat-to-doc'
 
         async function restartWithCurrentLanguages() {
             // Restart to fully apply both source/target on the server
@@ -573,26 +541,7 @@
             }
         }
 
-        async function tapLanguage(which) {
-            const leftVal = fromSelect.value;
-            const rightVal = toSelect.value;
-            if (which === 'left') {
-                // Left becomes FROM, right becomes TO
-                fromSelect.value = leftVal;
-                toSelect.value = rightVal;
-            } else {
-                // Right becomes FROM, left becomes TO
-                const tmpFrom = toSelect.value;
-                const tmpTo = fromSelect.value;
-                fromSelect.value = tmpFrom;
-                toSelect.value = tmpTo;
-            }
-
-            updateLangTapButtons();
-
-            // If already connected, restart session to apply input+output language change
-            await restartWithCurrentLanguages();
-        }
+        // tapLanguage no longer swaps; roles fixed. If needed, could trigger restart, but PTT handles direction.
 
         // ===== Microphone Control =====
         function muteMicrophone() {
