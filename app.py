@@ -355,6 +355,12 @@ async def translate_page():
     """
     return FileResponse("templates/translate.html")
 
+@app.get("/translate_button", response_class=FileResponse)
+async def translate_button_page():
+    """
+    Translate button page.
+    """
+    return FileResponse("templates/translate_button.html")
 @app.get("/token")
 async def get_realtime_token(sourceLanguage: str = "en", targetLanguage: str = "en"):
     """

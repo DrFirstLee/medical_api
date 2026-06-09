@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Realtime Interpreter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            color: #1e293b;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 980px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Top Bar styling */
+        .header-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
+        }
+
+        .lang-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .lang-group.left {
+            justify-content: flex-start;
+        }
+
+        .lang-group.right {
+            justify-content: flex-end;
+        }
+
+        .lang-label {
+            font-size: 18px;
+            font-weight: 700;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .lang-select {
+            border: 1px solid #cbd5e1;
+            background-color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e293b;
+            outline: none;
+            cursor: pointer;
+            min-width: 200px;
+            transition: all 0.2s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 16px;
+            padding-right: 44px;
+        }
+
+        .lang-select:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+        }
+
+        @keyframes highlight-blink {
+
+            0%,
+            100% {
+                background-color: #ffffff;
+                box-shadow: 0 0 0 0px rgba(37, 99, 235, 0);
+            }
+
+            50% {
+                background-color: #eff6ff;
+                box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.3);
+            }
+        }
+
+        .highlight-blink {
+            animation: highlight-blink 0.4s ease-in-out 3;
+        }
+
+        .exchange-btn {
+            font-size: 20px;
+            color: #94a3b8;
+            cursor: pointer;
+            user-select: none;
+            padding: 8px;
+            border-radius: 50%;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .exchange-btn:hover {
+            background-color: #f1f5f9;
+            color: #475569;
+        }
+
+        /* Language Tap Buttons (choose speak direction) */
+        .lang-tap-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .lang-tap-btn {
+            border: 1px solid #cbd5e1;
+            background-color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            cursor: pointer;
+            transition: all 0.15s ease-in-out;
+            user-select: none;
+        }
+
+        .lang-tap-btn:hover {
+            background-color: #f8fafc;
+            transform: translateY(-1px);
+        }
+
+        .lang-tap-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Workspace Grid */
+        .workspace {
+            display: flex;
+            gap: 16px;
+            width: 100%;
+        }
+
+        /* Chat history container */
+        .history-card {
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 30px;
+            height: 580px;
+            position: relative;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.02), 0 4px 6px -4px rgba(0, 0, 0, 0.02);
+            scroll-behavior: smooth;
+        }
+
+        .placeholder-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #94a3b8;
+            font-size: 15px;
+            pointer-events: none;
+            text-align: center;
+            font-weight: 400;
+        }
+
+        /* Right Control Strip */
+        .control-panel {
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .start-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            background-color: #2563eb;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.2);
+            transition: all 0.2s;
+        }
+
+        .start-btn:hover {
+            background-color: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .start-btn:active {
+            transform: translateY(0);
+        }
+
+        .start-btn.active {
+            background-color: #ef4444;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.2);
+        }
+
+        .status-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+
+        .tts-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background-color: #f8fafc;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            outline: none;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .tts-btn:hover {
+            background-color: #f1f5f9;
+            color: #1e293b;
+            transform: translateY(-1px);
+        }
+
+        .tts-btn:active {
+            transform: translateY(0);
+        }
+
+        .tts-btn.muted {
+            background-color: #fee2e2;
+            color: #ef4444;
+            border-color: #fca5a5;
+        }
+
+        /* Volume Level Meter */
+        .volume-meter-container {
+            flex: 1;
+            width: 24px;
+            background-color: #f1f5f9;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            cursor: pointer;
+        }
+
+        .volume-fill {
+            width: 100%;
+            height: 0%;
+            background: linear-gradient(to top, #3b82f6, #60a5fa);
+            border-radius: 12px;
+            transition: height 0.08s ease-out;
+        }
+
+        .volume-indicator-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: #ef4444;
+            bottom: 0%;
+            z-index: 2;
+            transition: bottom 0.05s ease-out;
+            box-shadow: 0 0 4px rgba(239, 68, 68, 0.8);
+        }
+
+
+
+        /* Chat Bubbles styling */
+        .message-bubble {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 24px;
+            max-width: 80%;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-bubble {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 24px;
+            max-width: 85%;
+            align-self: flex-start;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        .message-header {
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .message-content {
+            border-radius: 16px;
+            border-top-left-radius: 4px;
+            padding: 12px 18px;
+            color: #1e293b;
+            font-size: 15px;
+            line-height: 1.5;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.01);
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .original-text {
+            font-weight: 400;
+            color: #475569;
+        }
+
+        .translated-text {
+            margin-top: 6px;
+            font-weight: 600;
+            color: #2563eb;
+            font-size: 16px;
+        }
+
+        /* Log card hidden or minimal */
+        .system-log-drawer {
+            display: none;
+        }
+
+        /* Custom scrollbar for chat */
+        .history-card::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .history-card::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .history-card::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Top Bar with Dropdowns -->
+        <div class="header-card">
+            <div class="lang-group left">
+                <span class="lang-label">From</span>
+                <select id="fromLanguage" class="lang-select">
+                    <option value="en" selected>English</option>
+                    <option value="ko">Korean</option>
+                    <option value="es">Spanish</option>
+                    <option value="ja">Japanese</option>
+                    <option value="zh">Chinese</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                </select>
+                <div class="lang-tap-wrap">
+                    <button id="langTapLeft" class="lang-tap-btn" title="이 언어로 말하기">Speak: English</button>
+                </div>
+            </div>
+
+            <div class="exchange-btn" id="exchangeBtn" title="언어 서로 바꾸기">
+                ⇄
+            </div>
+
+            <div class="lang-group right">
+                <span class="lang-label">To</span>
+                <select id="toLanguage" class="lang-select">
+                    <option value="ko" selected>Korean</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="ja">Japanese</option>
+                    <option value="zh">Chinese</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                </select>
+                <div class="lang-tap-wrap">
+                    <button id="langTapRight" class="lang-tap-btn" title="이 언어로 말하기">Speak: Korean</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="workspace">
+            <!-- Chat Card -->
+            <div class="history-card" id="historyCard">
+                <div class="placeholder-text" id="placeholderText">
+                    Conversation history will appear here.
+                </div>
+            </div>
+
+            <!-- Controls & Level Meter -->
+            <div class="control-panel">
+                <button class="start-btn" id="startBtn">Start</button>
+                <div class="status-label" id="statusLabel">Ready</div>
+                <button class="tts-btn" id="ttsToggleBtn" title="TTS On/Off">🔊</button>
+
+                <!-- Volume Level Meter -->
+                <div class="volume-meter-container">
+                    <div class="volume-fill" id="volumeFill"></div>
+                    <div class="volume-indicator-line" id="volumeIndicatorLine"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden audio element to play translation stream -->
+    <audio id="audioOutput" autoplay></audio>
+
+    <script>
+        // ===== State Machine =====
+        // IDLE: not connected
+        // LISTENING: mic on, no speech detected yet
+        // SPEAKING: mic on, user actively speaking (waiting for silence to finish turn)
+        // TRANSLATING: mic off, translation audio playing
+        let interpreterState = 'IDLE';
+
+        // WebRTC & Audio variables
+        let pc = null;
+        let dc = null;
+        let mediaStream = null;
+        let actx = null, anl = null, afId = null;
+
+        // Silence detection for determining end of user's turn
+        let silenceStartTime = null;
+        let smoothedVolume = 0;
+        let SILENCE_THRESHOLD = 20; // Adjustable via UI drag
+        const SILENCE_DURATION = 3000; // 3 seconds of silence = user done speaking
+
+        // Translation playback tracking
+        let outputActx = null, outputAnl = null, outputAfId = null;
+        let isTranslationPlaying = false;
+        let translationFinishedTimeout = null;
+        let translatingWatchdog = null;
+        let outputTranscriptDoneTimer = null; // Fallback: fires 2s after last output_transcript.delta
+        let lastOutputTranscriptTime = 0; // Timestamp of last output_transcript.delta received
+
+        // UI elements
+        const startBtn = document.getElementById('startBtn');
+        const statusLabel = document.getElementById('statusLabel');
+        const historyCard = document.getElementById('historyCard');
+        const fromSelect = document.getElementById('fromLanguage');
+        const toSelect = document.getElementById('toLanguage');
+        const exchangeBtn = document.getElementById('exchangeBtn');
+        const volumeFill = document.getElementById('volumeFill');
+        const volumeIndicatorLine = document.getElementById('volumeIndicatorLine');
+        const audioOutput = document.getElementById('audioOutput');
+        const ttsToggleBtn = document.getElementById('ttsToggleBtn');
+        const langTapLeftBtn = document.getElementById('langTapLeft');
+        const langTapRightBtn = document.getElementById('langTapRight');
+
+        // Chat bubble state
+        let activeBubble = null;
+
+        // ===== Language Swap =====
+        function swapLanguagesAndNotify() {
+            const temp = fromSelect.value;
+            fromSelect.value = toSelect.value;
+            toSelect.value = temp;
+
+            fromSelect.classList.remove('highlight-blink');
+            toSelect.classList.remove('highlight-blink');
+            void fromSelect.offsetWidth;
+            void toSelect.offsetWidth;
+            fromSelect.classList.add('highlight-blink');
+            toSelect.classList.add('highlight-blink');
+
+            activeBubble = null;
+
+            if (dc && dc.readyState === 'open') {
+                const newTargetLang = toSelect.value;
+                dc.send(JSON.stringify({
+                    type: 'session.update',
+                    session: {
+                        audio: {
+                            output: {
+                                language: newTargetLang
+                            }
+                        }
+                    }
+                }));
+                console.log(`[SWAP] Target language updated to: ${newTargetLang}`);
+            }
+
+            // Update tap button labels
+            updateLangTapButtons();
+        }
+
+        // ===== Language Tap (choose direction by tapping a language) =====
+        function updateLangTapButtons() {
+            const fromText = fromSelect.options[fromSelect.selectedIndex].text;
+            const toText = toSelect.options[toSelect.selectedIndex].text;
+            if (langTapLeftBtn) langTapLeftBtn.textContent = `Speak: ${fromText}`;
+            if (langTapRightBtn) langTapRightBtn.textContent = `Speak: ${toText}`;
+        }
+
+        async function restartWithCurrentLanguages() {
+            // Restart to fully apply both source/target on the server
+            if (startBtn.classList.contains('active')) {
+                stop();
+                await new Promise(r => setTimeout(r, 300));
+                await start();
+            } else {
+                await start();
+            }
+        }
+
+        async function tapLanguage(which) {
+            const leftVal = fromSelect.value;
+            const rightVal = toSelect.value;
+            if (which === 'left') {
+                // Left becomes FROM, right becomes TO
+                fromSelect.value = leftVal;
+                toSelect.value = rightVal;
+            } else {
+                // Right becomes FROM, left becomes TO
+                const tmpFrom = toSelect.value;
+                const tmpTo = fromSelect.value;
+                fromSelect.value = tmpFrom;
+                toSelect.value = tmpTo;
+            }
+
+            updateLangTapButtons();
+
+            // If already connected, restart session to apply input+output language change
+            await restartWithCurrentLanguages();
+        }
+
+        // ===== Microphone Control =====
+        function muteMicrophone() {
+            if (mediaStream) {
+                const micTrack = mediaStream.getAudioTracks()[0];
+                if (micTrack) micTrack.enabled = false;
+            }
+        }
+
+        function unmuteMicrophone() {
+            if (mediaStream) {
+                const micTrack = mediaStream.getAudioTracks()[0];
+                if (micTrack) micTrack.enabled = true;
+            }
+        }
+
+        // ===== State Transitions =====
+        function enterListeningState() {
+            interpreterState = 'LISTENING';
+            unmuteMicrophone();
+            silenceStartTime = null;
+            smoothedVolume = 0;
+            lastOutputTranscriptTime = 0;
+            statusLabel.textContent = 'Listening';
+            statusLabel.style.color = '#10b981';
+            console.log('[STATE] → LISTENING');
+        }
+
+        function enterSpeakingState() {
+            if (interpreterState === 'SPEAKING') return;
+            interpreterState = 'SPEAKING';
+            silenceStartTime = null;
+            statusLabel.textContent = 'Speaking';
+            statusLabel.style.color = '#3b82f6';
+            console.log('[STATE] → SPEAKING');
+        }
+
+        function enterTranslatingState() {
+            if (interpreterState === 'TRANSLATING') return;
+            interpreterState = 'TRANSLATING';
+            muteMicrophone();
+            statusLabel.textContent = 'Translating';
+            statusLabel.style.color = '#f59e0b';
+            console.log('[STATE] → TRANSLATING');
+
+            // Check if translation text already finished arriving before we entered this state
+            if (lastOutputTranscriptTime > 0 && Date.now() - lastOutputTranscriptTime > 1500) {
+                console.log('[FAST] Translation text already finished, quick transition in 500ms');
+                translatingWatchdog = setTimeout(() => {
+                    onTranslationFinished();
+                }, 500);
+                return;
+            }
+
+            // Safety watchdog: force transition after 8 seconds
+            if (translatingWatchdog) clearTimeout(translatingWatchdog);
+            translatingWatchdog = setTimeout(() => {
+                console.log('[WATCHDOG] Forcing transition out of TRANSLATING after 8s');
+                onTranslationFinished();
+            }, 8000);
+        }
+
+        function onTranslationFinished() {
+            if (interpreterState !== 'TRANSLATING') return;
+
+            if (translatingWatchdog) {
+                clearTimeout(translatingWatchdog);
+                translatingWatchdog = null;
+            }
+            isTranslationPlaying = false;
+            if (translationFinishedTimeout) {
+                clearTimeout(translationFinishedTimeout);
+                translationFinishedTimeout = null;
+            }
+            if (outputTranscriptDoneTimer) {
+                clearTimeout(outputTranscriptDoneTimer);
+                outputTranscriptDoneTimer = null;
+            }
+
+            console.log('[STATE] Translation finished, swapping languages...');
+            swapLanguagesAndNotify();
+            enterListeningState();
+        }
+
+        // ===== Output Volume Tracking =====
+        function startOutputVolumeMeter(stream) {
+            try {
+                outputActx = new (window.AudioContext || window.webkitAudioContext)();
+                outputAnl = outputActx.createAnalyser();
+                outputAnl.fftSize = 256;
+                const source = outputActx.createMediaStreamSource(stream);
+                source.connect(outputAnl);
+                const bufferLength = outputAnl.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function checkOutputMeter() {
+                    if (!outputAnl) return;
+                    outputAnl.getByteFrequencyData(dataArray);
+
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / bufferLength;
+
+                    if (interpreterState === 'TRANSLATING') {
+                        if (average > 1.5) {
+                            if (!isTranslationPlaying) isTranslationPlaying = true;
+                            if (translationFinishedTimeout) {
+                                clearTimeout(translationFinishedTimeout);
+                                translationFinishedTimeout = null;
+                            }
+                            // Reset watchdog while audio is playing
+                            if (translatingWatchdog) {
+                                clearTimeout(translatingWatchdog);
+                                translatingWatchdog = setTimeout(() => {
+                                    console.log('[WATCHDOG] Forcing transition after extended silence');
+                                    onTranslationFinished();
+                                }, 10000);
+                            }
+                        } else if (isTranslationPlaying) {
+                            if (!translationFinishedTimeout) {
+                                translationFinishedTimeout = setTimeout(() => {
+                                    onTranslationFinished();
+                                }, 1000);
+                            }
+                        }
+                    }
+
+                    outputAfId = requestAnimationFrame(checkOutputMeter);
+                }
+                checkOutputMeter();
+            } catch (err) {
+                console.error('Output volume meter error:', err);
+            }
+        }
+
+        function stopOutputVolumeMeter() {
+            if (outputAfId) cancelAnimationFrame(outputAfId);
+            if (outputActx) outputActx.close().catch(() => { });
+            outputActx = outputAnl = null;
+            isTranslationPlaying = false;
+            if (translationFinishedTimeout) {
+                clearTimeout(translationFinishedTimeout);
+                translationFinishedTimeout = null;
+            }
+        }
+
+        // ===== Microphone Volume Visualization + Silence Detection =====
+        function startVolumeMeter(stream) {
+            try {
+                actx = new (window.AudioContext || window.webkitAudioContext)();
+                anl = actx.createAnalyser();
+                anl.fftSize = 256;
+                const source = actx.createMediaStreamSource(stream);
+                source.connect(anl);
+                const bufferLength = anl.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function updateMeter() {
+                    if (!anl) return;
+                    anl.getByteFrequencyData(dataArray);
+
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / bufferLength;
+
+                    // EMA smoothing
+                    const smoothingFactor = 0.15;
+                    smoothedVolume = (smoothingFactor * average) + ((1 - smoothingFactor) * smoothedVolume);
+
+                    // Visualization
+                    const percentage = Math.min(100, Math.floor((average / 140) * 100));
+                    volumeFill.style.height = percentage + '%';
+
+                    // Client-side silence detection (only in SPEAKING state)
+                    if (interpreterState === 'SPEAKING') {
+                        if (smoothedVolume >= SILENCE_THRESHOLD) {
+                            // User is still speaking — reset silence timer
+                            silenceStartTime = null;
+                        } else {
+                            // Below threshold — start or continue silence timer
+                            if (silenceStartTime === null) {
+                                silenceStartTime = Date.now();
+                            } else if (Date.now() - silenceStartTime > SILENCE_DURATION) {
+                                // User has been silent for 3s → they're done speaking
+                                console.log('[SILENCE] 3s silence detected → entering TRANSLATING');
+                                enterTranslatingState();
+                            }
+                        }
+                    }
+
+                    afId = requestAnimationFrame(updateMeter);
+                }
+                updateMeter();
+            } catch (err) {
+                console.error('Volume meter error:', err);
+            }
+        }
+
+        function stopVolumeMeter() {
+            if (afId) cancelAnimationFrame(afId);
+            if (actx) actx.close().catch(() => { });
+            actx = anl = null;
+            volumeFill.style.height = '0%';
+        }
+
+        // ===== Chat Bubble Management =====
+        function updateMessage(text, isTranslation) {
+            const placeholder = document.getElementById('placeholderText');
+            if (placeholder) placeholder.remove();
+
+            if (!activeBubble) {
+                activeBubble = document.createElement('div');
+                activeBubble.className = 'message-bubble';
+
+                const header = document.createElement('div');
+                header.className = 'message-header';
+                const fromLangName = fromSelect.options[fromSelect.selectedIndex].text;
+                const toLangName = toSelect.options[toSelect.selectedIndex].text;
+                header.textContent = `🌐 ${fromLangName} ➔ ${toLangName}`;
+                activeBubble.appendChild(header);
+
+                const content = document.createElement('div');
+                content.className = 'message-content';
+
+                const orig = document.createElement('p');
+                orig.className = 'original-text';
+                content.appendChild(orig);
+
+                const trans = document.createElement('p');
+                trans.className = 'translated-text';
+                content.appendChild(trans);
+
+                activeBubble.appendChild(content);
+                historyCard.appendChild(activeBubble);
+            }
+
+            const pElement = activeBubble.querySelector(isTranslation ? '.translated-text' : '.original-text');
+            if (pElement) pElement.textContent += text;
+
+            historyCard.scrollTop = historyCard.scrollHeight;
+        }
+
+        // ===== Start / Stop =====
+        async function start() {
+            try {
+                startBtn.disabled = true;
+                statusLabel.textContent = 'Connecting';
+                statusLabel.style.color = '';
+
+                const fromLang = fromSelect.value;
+                const toLang = toSelect.value;
+
+                if (fromLang === toLang) {
+                    alert('From과 To 언어는 다르게 선택해야 합니다!');
+                    startBtn.disabled = false;
+                    statusLabel.textContent = 'Ready';
+                    return;
+                }
+
+                historyCard.innerHTML = '';
+                activeBubble = null;
+
+                // 1. Fetch ephemeral token
+                statusLabel.textContent = 'Authenticating';
+                const res = await fetch(`/token?sourceLanguage=${fromLang}&targetLanguage=${toLang}`);
+                if (!res.ok) throw new Error('세션 토큰 생성 실패');
+                const data = await res.json();
+
+                // 2. Microphone access
+                statusLabel.textContent = 'Audio Init';
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                startVolumeMeter(mediaStream);
+
+                // 3. Setup Peer Connection
+                pc = new RTCPeerConnection();
+
+                pc.ontrack = (e) => {
+                    audioOutput.srcObject = e.streams[0];
+                    audioOutput.play().catch(() => { });
+                    startOutputVolumeMeter(e.streams[0]);
+                };
+
+                const track = mediaStream.getAudioTracks()[0];
+                pc.addTrack(track, mediaStream);
+
+                // 4. Data Channel
+                dc = pc.createDataChannel('oai-events');
+
+                dc.onmessage = (e) => {
+                    try {
+                        const event = JSON.parse(e.data);
+
+                        if (event.type === 'session.input_transcript.delta') {
+                            updateMessage(event.delta, false);
+                            // User is speaking → enter SPEAKING state (if not already)
+                            if (interpreterState === 'LISTENING') {
+                                enterSpeakingState();
+                            }
+                        }
+
+                        if (event.type === 'session.input_transcript.done') {
+                            // Server detected end of one utterance.
+                            // Do NOT mute mic — user may continue speaking.
+                            // The client-side silence detection will handle the transition.
+                            console.log('[EVENT] input_transcript.done (waiting for client silence detection)');
+                        }
+
+                        if (event.type === 'session.output_transcript.delta') {
+                            updateMessage(event.delta, true);
+                            lastOutputTranscriptTime = Date.now();
+                            // Fallback: if no more output events arrive within 2s, consider translation done
+                            if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
+                            outputTranscriptDoneTimer = setTimeout(() => {
+                                console.log('[FALLBACK] No output_transcript.delta for 2s → translation done');
+                                outputTranscriptDoneTimer = null;
+                                onTranslationFinished();
+                            }, 2000);
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+                };
+
+                // 5. SDP Exchange
+                statusLabel.textContent = 'Negotiating';
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                const sdpRes = await fetch('https://api.openai.com/v1/realtime/translations/calls', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${data.token}`, 'Content-Type': 'application/sdp' },
+                    body: offer.sdp
+                });
+                if (!sdpRes.ok) throw new Error('SDP 협상 에러');
+                await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
+
+                // Connected
+                startBtn.textContent = 'Stop';
+                startBtn.className = 'start-btn active';
+                startBtn.disabled = false;
+
+                fromSelect.disabled = true;
+                toSelect.disabled = true;
+                exchangeBtn.style.pointerEvents = 'none';
+                exchangeBtn.style.opacity = '0.3';
+
+                enterListeningState();
+
+            } catch (err) {
+                console.error(err);
+                alert('연결 에러가 발생했습니다: ' + err.message);
+                stop();
+            }
+        }
+
+        function stop() {
+            interpreterState = 'IDLE';
+
+            if (translatingWatchdog) {
+                clearTimeout(translatingWatchdog);
+                translatingWatchdog = null;
+            }
+            if (translationFinishedTimeout) {
+                clearTimeout(translationFinishedTimeout);
+                translationFinishedTimeout = null;
+            }
+            if (outputTranscriptDoneTimer) {
+                clearTimeout(outputTranscriptDoneTimer);
+                outputTranscriptDoneTimer = null;
+            }
+
+            activeBubble = null;
+            silenceStartTime = null;
+            smoothedVolume = 0;
+
+            if (dc) { dc.close(); dc = null; }
+            if (pc) { pc.close(); pc = null; }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            stopVolumeMeter();
+            stopOutputVolumeMeter();
+
+            audioOutput.srcObject = null;
+
+            startBtn.textContent = 'Start';
+            startBtn.className = 'start-btn';
+            startBtn.disabled = false;
+            statusLabel.textContent = 'Ready';
+            statusLabel.style.color = '';
+
+            fromSelect.disabled = false;
+            toSelect.disabled = false;
+            exchangeBtn.style.pointerEvents = 'auto';
+            exchangeBtn.style.opacity = '1';
+
+            if (historyCard.children.length === 0) {
+                historyCard.innerHTML = `
+                    <div class="placeholder-text" id="placeholderText">
+                        Conversation history will appear here.
+                    </div>
+                `;
+            }
+
+            updateLangTapButtons();
+        }
+
+        // ===== Event Listeners =====
+        startBtn.addEventListener('click', () => {
+            if (startBtn.classList.contains('active')) {
+                stop();
+            } else {
+                start();
+            }
+        });
+
+        exchangeBtn.addEventListener('click', () => {
+            const temp = fromSelect.value;
+            fromSelect.value = toSelect.value;
+            toSelect.value = temp;
+            updateLangTapButtons();
+        });
+
+        ttsToggleBtn.addEventListener('click', () => {
+            audioOutput.muted = !audioOutput.muted;
+            if (audioOutput.muted) {
+                ttsToggleBtn.classList.add('muted');
+                ttsToggleBtn.textContent = '🔇';
+            } else {
+                ttsToggleBtn.classList.remove('muted');
+                ttsToggleBtn.textContent = '🔊';
+            }
+        });
+
+        // Tap buttons bind
+        langTapLeftBtn.addEventListener('click', () => tapLanguage('left'));
+        langTapRightBtn.addEventListener('click', () => tapLanguage('right'));
+
+        // Keep tap button labels in sync when the selects change (if user uses dropdowns)
+        fromSelect.addEventListener('change', updateLangTapButtons);
+        toSelect.addEventListener('change', updateLangTapButtons);
+
+        // Initialize labels
+        updateLangTapButtons();
+
+        // ===== Threshold Drag UI =====
+        const volumeMeterContainer = document.querySelector('.volume-meter-container');
+
+        function updateThresholdUI() {
+            const pct = (SILENCE_THRESHOLD / 140) * 100;
+            volumeIndicatorLine.style.bottom = pct + '%';
+        }
+        updateThresholdUI();
+
+        function setThresholdFromClick(e) {
+            const rect = volumeMeterContainer.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const pct = Math.max(0, Math.min(100, 100 - (y / rect.height) * 100));
+            SILENCE_THRESHOLD = (pct / 100) * 140;
+            updateThresholdUI();
+        }
+
+        volumeMeterContainer.addEventListener('mousedown', (e) => {
+            setThresholdFromClick(e);
+            function onMouseMove(ev) { setThresholdFromClick(ev); }
+            function onMouseUp() {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+            }
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+    </script>
+</body>
+
+</html>
