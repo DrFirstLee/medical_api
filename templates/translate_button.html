@@ -535,9 +535,9 @@
             if (isConnected()) {
                 stop();
                 await new Promise(r => setTimeout(r, 300));
-                await start();
+                await start(true); // keep history on direction change
             } else {
-                await start();
+                await start(true); // keep history even on first connect
             }
         }
 
@@ -792,7 +792,7 @@
         }
 
         // ===== Start / Stop =====
-        async function start() {
+        async function start(keepHistory = true) {
             try {
             if (startBtn) startBtn.disabled = true;
                 statusLabel.textContent = 'Connecting';
@@ -810,7 +810,11 @@
                     return;
                 }
 
-                historyCard.innerHTML = '';
+                // Do not reset the entire conversation history when reconnecting or switching speaker.
+                // Start a fresh bubble for the new turn/direction by resetting only the activeBubble pointer.
+                if (!keepHistory) {
+                    historyCard.innerHTML = '';
+                }
                 activeBubble = null;
 
                 // 1. Fetch ephemeral token
@@ -984,8 +988,12 @@
             const nextDir = (which === 'right') ? 'pat-to-doc' : 'doc-to-pat';
             const changed = (nextDir !== currentDirection);
             currentDirection = nextDir;
+            // Start a new bubble when the speaker role changes, but keep prior history intact
+            if (changed) {
+                activeBubble = null;
+            }
             if (!isConnected()) {
-                await start();
+                await start(true);
             } else if (changed) {
                 await restartWithCurrentLanguages();
             }
