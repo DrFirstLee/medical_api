@@ -763,9 +763,11 @@
 
                 const header = document.createElement('div');
                 header.className = 'message-header';
-                const fromLangName = fromSelect.options[fromSelect.selectedIndex].text;
-                const toLangName = toSelect.options[toSelect.selectedIndex].text;
-                header.textContent = `🌐 ${fromLangName} ➔ ${toLangName}`;
+                const docLangName = fromSelect.options[fromSelect.selectedIndex].text;
+                const patLangName = toSelect.options[toSelect.selectedIndex].text;
+                header.textContent = (currentDirection === 'doc-to-pat')
+                    ? `👨‍⚕️ Doctor (${docLangName}) ➔ 🧑 Patient (${patLangName})`
+                    : `🧑 Patient (${patLangName}) ➔ 👨‍⚕️ Doctor (${docLangName})`;
                 activeBubble.appendChild(header);
 
                 const content = document.createElement('div');
@@ -796,11 +798,13 @@
                 statusLabel.textContent = 'Connecting';
                 statusLabel.style.color = '';
 
-                const fromLang = fromSelect.value;
-                const toLang = toSelect.value;
+                const docLang = fromSelect.value;
+                const patLang = toSelect.value;
+                const fromLang = (currentDirection === 'doc-to-pat') ? docLang : patLang;
+                const toLang = (currentDirection === 'doc-to-pat') ? patLang : docLang;
 
-                if (fromLang === toLang) {
-                    alert('From과 To 언어는 다르게 선택해야 합니다!');
+                if (docLang === patLang) {
+                    alert('Doctor와 Patient 언어는 다르게 선택해야 합니다!');
                     if (startBtn) startBtn.disabled = false;
                     statusLabel.textContent = 'Ready';
                     return;
@@ -894,8 +898,6 @@
 
                 fromSelect.disabled = true;
                 toSelect.disabled = true;
-                exchangeBtn.style.pointerEvents = 'none';
-                exchangeBtn.style.opacity = '0.3';
 
                 enterListeningState();
 
@@ -949,8 +951,6 @@
 
             fromSelect.disabled = false;
             toSelect.disabled = false;
-            exchangeBtn.style.pointerEvents = 'auto';
-            exchangeBtn.style.opacity = '1';
 
             if (historyCard.children.length === 0) {
                 historyCard.innerHTML = `
@@ -964,14 +964,7 @@
         }
 
         // ===== Event Listeners =====
-        // No Start button in PTT-only UI
-
-        exchangeBtn.addEventListener('click', () => {
-            const temp = fromSelect.value;
-            fromSelect.value = toSelect.value;
-            toSelect.value = temp;
-            updateLangTapButtons();
-        });
+        // No Start button and no exchange in PTT-only UI
 
         ttsToggleBtn.addEventListener('click', () => {
             audioOutput.muted = !audioOutput.muted;
@@ -988,21 +981,9 @@
         let isPTTActive = false;
 
         async function ensureDirection(which) {
-            const wasLeftFrom = fromSelect.value; // store
-            const wasRightTo = toSelect.value;
-
-            let changed = false;
-            if (which === 'left') {
-                // Speak left direction: keep current from→to
-            } else if (which === 'right') {
-                // Speak right direction: swap
-                const tmp = fromSelect.value;
-                fromSelect.value = toSelect.value;
-                toSelect.value = tmp;
-                changed = true;
-                updateLangTapButtons();
-            }
-
+            const nextDir = (which === 'right') ? 'pat-to-doc' : 'doc-to-pat';
+            const changed = (nextDir !== currentDirection);
+            currentDirection = nextDir;
             if (!isConnected()) {
                 await start();
             } else if (changed) {
