@@ -155,8 +155,13 @@
             cursor: pointer;
             transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, background 0.2s ease;
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
             box-shadow: 0 2px 6px rgba(2, 6, 23, 0.08);
             background: linear-gradient(180deg, #ffffff, #f8fafc);
+            overflow: hidden; /* for ripple */
         }
 
         .lang-tap-btn.doctor-btn {
@@ -182,9 +187,33 @@
             box-shadow: 0 2px 6px rgba(2, 6, 23, 0.12) inset;
         }
 
+        .lang-tap-btn.is-pressed {
+            transform: translateY(0) scale(0.98);
+            filter: brightness(0.98);
+            box-shadow: 0 3px 8px rgba(2, 6, 23, 0.14) inset;
+        }
+
         .lang-tap-btn .emoji {
             font-size: 16px;
             line-height: 1;
+        }
+
+        /* Ripple effect */
+        .lang-tap-btn .ripple {
+            position: absolute;
+            border-radius: 50%;
+            transform: scale(0);
+            pointer-events: none;
+            opacity: 0.6;
+            animation: ripple 480ms ease-out;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        @keyframes ripple {
+            to {
+                transform: scale(8);
+                opacity: 0;
+            }
         }
 
         /* Workspace Grid */
@@ -431,6 +460,87 @@
         .history-card::-webkit-scrollbar-thumb {
             background: #cbd5e1;
             border-radius: 10px;
+        }
+
+        /* --- Responsive tweaks for mobile landscape & very wide aspect --- */
+        @media (orientation: landscape) and (max-height: 520px) {
+            body { padding: 12px; }
+            .container { gap: 10px; max-width: 1100px; }
+            .header-card { padding: 8px 12px; border-radius: 12px; }
+            .lang-label { font-size: 14px; }
+            .lang-select {
+                min-width: 140px;
+                font-size: 14px;
+                padding: 8px 14px;
+                padding-right: 36px;
+                background-size: 12px;
+                background-position: right 10px center;
+            }
+            .lang-tap-btn { font-size: 13px; padding: 8px 12px; border-radius: 12px; }
+            .workspace { gap: 10px; }
+            .control-panel { width: 64px; gap: 8px; }
+            .status-label { font-size: 10px; margin-bottom: 2px; }
+            .tts-btn { width: 40px; height: 40px; border-radius: 10px; font-size: 16px; }
+            .volume-meter-container { width: 18px; border-radius: 10px; }
+            .volume-indicator-line { height: 2px; }
+            .history-card { height: calc(100vh - 170px); }
+            .message-bubble { max-width: 60%; }
+            .message-content { padding: 10px 14px; font-size: 14px; }
+            .translated-text { font-size: 15px; }
+        }
+
+        @media (min-aspect-ratio: 5/1) and (max-height: 420px) {
+            .lang-select { min-width: 120px; font-size: 13px; }
+            .lang-tap-btn { font-size: 12px; padding: 7px 10px; }
+            .history-card { height: calc(100vh - 140px); }
+            .message-bubble { max-width: 58%; }
+            .message-content { font-size: 13px; }
+            .translated-text { font-size: 14px; }
+        }
+
+        /* --- Responsive tweaks for mobile portrait --- */
+        @media (orientation: portrait) and (max-width: 480px) {
+            body { padding: 12px; }
+            .container { gap: 10px; max-width: 100%; }
+            .header-card {
+                padding: 10px 12px;
+                border-radius: 12px;
+                flex-wrap: wrap;
+                row-gap: 8px;
+            }
+            .lang-group { flex: 1 1 100%; justify-content: space-between; }
+            .lang-label { font-size: 14px; }
+            .lang-select { min-width: 140px; font-size: 14px; padding: 8px 12px; padding-right: 34px; background-size: 12px; }
+            .lang-tap-wrap { gap: 6px; }
+            .lang-tap-btn { font-size: 13px; padding: 8px 12px; border-radius: 12px; }
+
+            .workspace { flex-direction: column; gap: 10px; }
+            .history-card { height: 60vh; padding: 18px; }
+            .message-bubble { max-width: 90%; }
+            .message-content { padding: 10px 14px; font-size: 14px; }
+            .translated-text { font-size: 15px; }
+
+            .control-panel {
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: center;
+                gap: 10px;
+            }
+            .status-label { font-size: 10px; margin: 0; }
+            .tts-btn { width: 44px; height: 44px; border-radius: 12px; font-size: 16px; }
+            .volume-meter-container { width: 22px; height: 64px; }
+            .volume-indicator-line { height: 2px; }
+        }
+
+        @media (orientation: portrait) and (max-width: 360px) {
+            .lang-select { min-width: 130px; font-size: 13px; }
+            .lang-tap-btn { font-size: 12px; padding: 7px 10px; }
+            .history-card { height: 58vh; }
+            .message-content { font-size: 13px; }
+            .translated-text { font-size: 14px; }
+            .tts-btn { width: 40px; height: 40px; font-size: 15px; }
+            .volume-meter-container { width: 20px; height: 60px; }
         }
     </style>
 </head>
@@ -1071,6 +1181,43 @@
 
         // Initialize labels
         updateLangTapButtons();
+
+        // ===== Mobile-friendly press effects (no selection, ripple, pressed feel) =====
+        function attachPressEffects(btn) {
+            if (!btn) return;
+            // Prevent text selection / context menu
+            btn.addEventListener('contextmenu', (e) => e.preventDefault());
+            btn.addEventListener('selectstart', (e) => e.preventDefault());
+            btn.addEventListener('dragstart', (e) => e.preventDefault());
+
+            const addRipple = (ev) => {
+                const rect = btn.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height) * 1.2;
+                const x = (ev.clientX ?? 0) - rect.left - size / 2;
+                const y = (ev.clientY ?? 0) - rect.top - size / 2;
+                const span = document.createElement('span');
+                span.className = 'ripple';
+                span.style.width = span.style.height = size + 'px';
+                span.style.left = x + 'px';
+                span.style.top = y + 'px';
+                btn.appendChild(span);
+                span.addEventListener('animationend', () => span.remove());
+            };
+
+            const onDown = (e) => {
+                btn.classList.add('is-pressed');
+                addRipple(e);
+            };
+            const onUp = () => btn.classList.remove('is-pressed');
+
+            btn.addEventListener('pointerdown', onDown);
+            btn.addEventListener('pointerup', onUp);
+            btn.addEventListener('pointercancel', onUp);
+            btn.addEventListener('pointerleave', onUp);
+        }
+
+        attachPressEffects(langTapLeftBtn);
+        attachPressEffects(langTapRightBtn);
 
         // ===== Threshold Drag UI =====
         const volumeMeterContainer = document.querySelector('.volume-meter-container');
