@@ -667,8 +667,10 @@
         let isTranslationPlaying = false;
         let translationFinishedTimeout = null;
         let translatingWatchdog = null;
-        let outputTranscriptDoneTimer = null; // Fallback: fires 2s after last output_transcript.delta
+        let outputTranscriptDoneTimer = null; // Fallback: fires after last output_transcript.delta
         let lastOutputTranscriptTime = 0; // Timestamp of last output_transcript.delta received
+        let translatingStartedAt = 0;
+        const MIN_TTS_TRANSLATING_MS = 3500; // Give short TTS audio time to arrive/play
 
         // UI elements
         const startBtn = document.getElementById('startBtn');
@@ -799,6 +801,7 @@
         function enterTranslatingState() {
             if (interpreterState === 'TRANSLATING') return;
             interpreterState = 'TRANSLATING';
+            translatingStartedAt = Date.now();
             muteMicrophone();
             statusLabel.textContent = 'Translating';
             statusLabel.style.color = '#f59e0b';
@@ -806,7 +809,7 @@
             updateTTSAttachment();
 
             // Check if translation text already finished arriving before we entered this state
-            if (lastOutputTranscriptTime > 0 && Date.now() - lastOutputTranscriptTime > 1500) {
+            if (!ttsEnabled && lastOutputTranscriptTime > 0 && Date.now() - lastOutputTranscriptTime > 1500) {
                 console.log('[FAST] Translation text already finished, quick transition in 500ms');
                 translatingWatchdog = setTimeout(() => {
                     onTranslationFinished();
@@ -842,6 +845,18 @@
             // Do NOT auto-swap languages; remain in the same direction until user changes it
             console.log('[STATE] Translation finished');
             enterListeningState();
+        }
+
+        function scheduleTranslationDoneFallback() {
+            if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
+            const elapsed = Date.now() - translatingStartedAt;
+            const delay = ttsEnabled
+                ? Math.max(MIN_TTS_TRANSLATING_MS - elapsed, 1500)
+                : 2000;
+            outputTranscriptDoneTimer = setTimeout(() => {
+                outputTranscriptDoneTimer = null;
+                onTranslationFinished();
+            }, delay);
         }
 
         // ===== Output Volume Tracking =====
@@ -1071,6 +1086,7 @@
                     if (currentDirection !== 'doc-to-pat') return;
                     try {
                         const event = JSON.parse(e.data);
+                        console.log('[OAI EVENT][doc-to-pat]', event.type, event);
                         if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
                             if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
                         }
@@ -1082,8 +1098,7 @@
                             if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
                             updateMessage(event.delta, true);
                             lastOutputTranscriptTime = Date.now();
-                            if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
-                            outputTranscriptDoneTimer = setTimeout(() => { onTranslationFinished(); }, 2000);
+                            scheduleTranslationDoneFallback();
                         }
                     } catch (err) { console.error(err); }
                 };
@@ -1099,6 +1114,7 @@
                     if (currentDirection !== 'pat-to-doc') return;
                     try {
                         const event = JSON.parse(e.data);
+                        console.log('[OAI EVENT][pat-to-doc]', event.type, event);
                         if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
                             if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
                         }
@@ -1110,8 +1126,7 @@
                             if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
                             updateMessage(event.delta, true);
                             lastOutputTranscriptTime = Date.now();
-                            if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
-                            outputTranscriptDoneTimer = setTimeout(() => { onTranslationFinished(); }, 2000);
+                            scheduleTranslationDoneFallback();
                         }
                     } catch (err) { console.error(err); }
                 };
