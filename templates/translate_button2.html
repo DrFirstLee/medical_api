@@ -655,7 +655,7 @@
         // Silence detection for determining end of user's turn
         let silenceStartTime = null;
         let smoothedVolume = 0;
-        let SILENCE_THRESHOLD = 20; // Adjustable via UI drag
+        let SILENCE_THRESHOLD = 12; // Adjustable via UI drag
         const SILENCE_DURATION = 3000; // 3 seconds of silence = user done speaking
 
         // Translation playback tracking
@@ -685,6 +685,9 @@
         // TTS control state
         let ttsEnabled = true;
         let remoteOutputStream = null;
+        let sttSeenThisTurn = false;
+        let outputSeenThisTurn = false;
+        let sttFallbackInserted = false;
 
         // ===== Language Swap =====
         // swap removed — Doctor on left, Patient on right (fixed)
@@ -1036,19 +1039,31 @@
                     try {
                         const event = JSON.parse(e.data);
 
-                        if (event.type === 'session.input_transcript.delta') {
-                            updateMessage(event.delta, false);
-                            // In PTT mode we already control SPEAKING by button press
+                        if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
+                            if (event.delta) {
+                                updateMessage(event.delta, false);
+                                sttSeenThisTurn = true;
+                            }
                         }
 
-                        if (event.type === 'session.input_transcript.done') {
-                            // Server detected end of one utterance.
-                            // Do NOT mute mic — user may continue speaking.
-                            // The client-side silence detection will handle the transition.
-                            console.log('[EVENT] input_transcript.done (waiting for client silence detection)');
+                        if (event.type === 'session.input_transcript.done' || event.type === 'response.input_audio_transcript.done') {
+                            // Append any final text if provided by the API
+                            const finalText = event.text || event.transcript || '';
+                            if (finalText) {
+                                updateMessage(finalText, false);
+                                sttSeenThisTurn = true;
+                            }
+                            console.log('[EVENT] input_transcript.done');
                         }
 
                         if (event.type === 'session.output_transcript.delta') {
+                            if (!outputSeenThisTurn) {
+                                outputSeenThisTurn = true;
+                                if (!sttSeenThisTurn && !sttFallbackInserted) {
+                                    updateMessage(' (no STT captured)', false);
+                                    sttFallbackInserted = true;
+                                }
+                            }
                             updateMessage(event.delta, true);
                             lastOutputTranscriptTime = Date.now();
                             // Fallback: if no more output events arrive within 2s, consider translation done
@@ -1192,13 +1207,16 @@
             }
         }
 
-        const PTT_WARMUP_MS = 140; // small arm delay to avoid clipping front syllables
+        const PTT_WARMUP_MS = 250; // small arm delay to avoid clipping front syllables
 
         async function beginPTT(which) {
             try {
                 await ensureDirection(which);
                 // Start capturing
                 isPTTActive = true;
+                sttSeenThisTurn = false;
+                outputSeenThisTurn = false;
+                sttFallbackInserted = false;
                 unmuteMicrophone();
                 // Optional haptic cue on mobile
                 if (navigator.vibrate) {
