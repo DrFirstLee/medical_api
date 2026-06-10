@@ -26,6 +26,7 @@
             justify-content: center;
             min-height: 100vh;
         }
+        html, body { height: 100%; }
 
         .container {
             width: 100%;
@@ -514,8 +515,18 @@
             .lang-tap-wrap { gap: 6px; }
             .lang-tap-btn { font-size: 13px; padding: 8px 12px; border-radius: 12px; }
 
-            .workspace { flex-direction: column; gap: 10px; }
-            .history-card { height: 72vh; padding: 16px; }
+            .workspace { flex-direction: column; gap: 10px; flex: 1 1 auto; }
+            .history-card {
+                flex: 1 1 auto;
+                /* Fallback using JS-updated --vh to avoid iOS/Android 100vh bugs */
+                height: calc(var(--vh, 1vh) * 75);
+                min-height: calc(var(--vh, 1vh) * 70);
+                padding: 16px;
+            }
+            /* Prefer dynamic viewport units when supported */
+            @supports (height: 100dvh) {
+                .history-card { height: 75dvh; min-height: 70dvh; }
+            }
             .message-bubble { max-width: 95%; }
             .message-content { padding: 10px 14px; font-size: 14px; }
             .translated-text { font-size: 15px; }
@@ -536,7 +547,10 @@
         @media (orientation: portrait) and (max-width: 360px) {
             .lang-select { min-width: 130px; font-size: 13px; }
             .lang-tap-btn { font-size: 12px; padding: 7px 10px; }
-            .history-card { height: 70vh; }
+            .history-card { height: calc(var(--vh, 1vh) * 73); min-height: calc(var(--vh, 1vh) * 68); }
+            @supports (height: 100dvh) {
+                .history-card { height: 73dvh; min-height: 68dvh; }
+            }
             .message-content { font-size: 13px; }
             .translated-text { font-size: 14px; }
             .tts-btn { width: 36px; height: 36px; font-size: 14px; }
@@ -610,6 +624,21 @@
     <audio id="audioOutput" autoplay></audio>
 
     <script>
+        // Fix mobile 100vh issues by updating --vh to window.innerHeight * 1%
+        (function setupDynamicVh() {
+            const setVh = () => {
+                const vh = window.innerHeight * 0.01;
+                document.documentElement.style.setProperty('--vh', `${vh}px`);
+            };
+            window.addEventListener('load', setVh, { passive: true });
+            window.addEventListener('resize', setVh, { passive: true });
+            window.addEventListener('orientationchange', setVh, { passive: true });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', setVh, { passive: true });
+            }
+            setVh();
+        })();
+
         // ===== State Machine =====
         // IDLE: not connected
         // LISTENING: mic on, no speech detected yet
