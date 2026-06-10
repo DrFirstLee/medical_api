@@ -665,6 +665,7 @@
         // Translation playback tracking
         let outputActx = null, outputAnl = null, outputAfId = null;
         let isTranslationPlaying = false;
+        let hasTTSAudioPlayed = false;
         let translationFinishedTimeout = null;
         let translatingWatchdog = null;
         let outputTranscriptDoneTimer = null; // Fallback: fires after last output_transcript.delta
@@ -802,6 +803,7 @@
             if (interpreterState === 'TRANSLATING') return;
             interpreterState = 'TRANSLATING';
             translatingStartedAt = Date.now();
+            hasTTSAudioPlayed = false;
             muteMicrophone();
             statusLabel.textContent = 'Translating';
             statusLabel.style.color = '#f59e0b';
@@ -833,6 +835,7 @@
                 translatingWatchdog = null;
             }
             isTranslationPlaying = false;
+            hasTTSAudioPlayed = false;
             if (translationFinishedTimeout) {
                 clearTimeout(translationFinishedTimeout);
                 translationFinishedTimeout = null;
@@ -855,7 +858,11 @@
                 : 2000;
             outputTranscriptDoneTimer = setTimeout(() => {
                 outputTranscriptDoneTimer = null;
-                onTranslationFinished();
+                if (!ttsEnabled || (hasTTSAudioPlayed && !isTranslationPlaying)) {
+                    onTranslationFinished();
+                } else if (interpreterState === 'TRANSLATING') {
+                    scheduleTranslationDoneFallback();
+                }
             }, delay);
         }
 
@@ -882,6 +889,7 @@
 
                     if (interpreterState === 'TRANSLATING') {
                         if (average > 1.5) {
+                            hasTTSAudioPlayed = true;
                             if (!isTranslationPlaying) isTranslationPlaying = true;
                             if (translationFinishedTimeout) {
                                 clearTimeout(translationFinishedTimeout);
@@ -899,7 +907,7 @@
                             if (!translationFinishedTimeout) {
                                 translationFinishedTimeout = setTimeout(() => {
                                     onTranslationFinished();
-                                }, 1000);
+                                }, 2500);
                             }
                         }
                     }
