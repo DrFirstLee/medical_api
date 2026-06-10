@@ -1059,10 +1059,6 @@
                         if (event.type === 'session.output_transcript.delta') {
                             if (!outputSeenThisTurn) {
                                 outputSeenThisTurn = true;
-                                if (!sttSeenThisTurn && !sttFallbackInserted) {
-                                    updateMessage(' (no STT captured)', false);
-                                    sttFallbackInserted = true;
-                                }
                             }
                             updateMessage(event.delta, true);
                             lastOutputTranscriptTime = Date.now();
