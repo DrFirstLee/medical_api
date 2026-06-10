@@ -647,10 +647,14 @@
         let interpreterState = 'IDLE';
 
         // WebRTC & Audio variables
-        let pc = null;
-        let dc = null;
+        // Dual persistent sessions (doc→pat, pat→doc)
+        let pc = null; // deprecated, kept for compatibility during refactor
+        let dc = null; // deprecated
+        let pcDocToPat = null, dcDocToPat = null;
+        let pcPatToDoc = null, dcPatToDoc = null;
         let mediaStream = null;
         let actx = null, anl = null, afId = null;
+        let originalMicTrack = null;
 
         // Silence detection for determining end of user's turn
         let silenceStartTime = null;
@@ -684,14 +688,19 @@
         let activeBubble = null;
         // TTS control state
         let ttsEnabled = true;
-        let remoteOutputStream = null;
+        let remoteOutputStream = null; // deprecated
+        let remoteStreamDocToPat = null;
+        let remoteStreamPatToDoc = null;
+        let sendTrackDocToPat = null;
+        let sendTrackPatToDoc = null;
         let sttSeenThisTurn = false;
         let outputSeenThisTurn = false;
         let sttFallbackInserted = false;
 
         // Attach/detach remote audio based on TTS, PTT and state
         function updateTTSAttachment() {
-            if (!remoteOutputStream) {
+            const chosenStream = (currentDirection === 'doc-to-pat') ? remoteStreamDocToPat : remoteStreamPatToDoc;
+            if (!chosenStream) {
                 // Ensure detached when no stream
                 if (audioOutput.srcObject) {
                     audioOutput.srcObject = null;
@@ -701,10 +710,10 @@
             }
             const allowPlayback = ttsEnabled && !isPTTActive && interpreterState === 'TRANSLATING';
             if (allowPlayback) {
-                if (audioOutput.srcObject !== remoteOutputStream) {
-                    audioOutput.srcObject = remoteOutputStream;
+                if (audioOutput.srcObject !== chosenStream) {
+                    audioOutput.srcObject = chosenStream;
                     audioOutput.play().catch(() => {});
-                    startOutputVolumeMeter(remoteOutputStream);
+                    startOutputVolumeMeter(chosenStream);
                 }
             } else {
                 if (audioOutput.srcObject) {
@@ -726,19 +735,21 @@
         }
 
         function isConnected() {
-            return !!(pc && dc && dc.readyState === 'open');
+            const a = !!(pcDocToPat && dcDocToPat && dcDocToPat.readyState === 'open');
+            const b = !!(pcPatToDoc && dcPatToDoc && dcPatToDoc.readyState === 'open');
+            return a && b;
         }
 
         let currentDirection = 'doc-to-pat'; // or 'pat-to-doc'
 
         async function restartWithCurrentLanguages() {
-            // Restart to fully apply both source/target on the server
-            if (isConnected()) {
-                stop();
-                await new Promise(r => setTimeout(r, 300));
-                await start(true); // keep history on direction change
+            // With dual sessions, only rebuild on actual language dropdown change
+            if (!isConnected()) {
+                await start(true);
             } else {
-                await start(true); // keep history even on first connect
+                // Recreate both sessions to apply new languages
+                stop();
+                await start(true);
             }
         }
 
@@ -746,16 +757,19 @@
 
         // ===== Microphone Control =====
         function muteMicrophone() {
-            if (mediaStream) {
-                const micTrack = mediaStream.getAudioTracks()[0];
-                if (micTrack) micTrack.enabled = false;
-            }
+            // Disable sending on both direction clones (keep original for metering)
+            if (sendTrackDocToPat) sendTrackDocToPat.enabled = false;
+            if (sendTrackPatToDoc) sendTrackPatToDoc.enabled = false;
         }
 
         function unmuteMicrophone() {
-            if (mediaStream) {
-                const micTrack = mediaStream.getAudioTracks()[0];
-                if (micTrack) micTrack.enabled = true;
+            // Enable only the active direction's sender clone
+            if (currentDirection === 'doc-to-pat') {
+                if (sendTrackDocToPat) sendTrackDocToPat.enabled = true;
+                if (sendTrackPatToDoc) sendTrackPatToDoc.enabled = false;
+            } else {
+                if (sendTrackDocToPat) sendTrackDocToPat.enabled = false;
+                if (sendTrackPatToDoc) sendTrackPatToDoc.enabled = true;
             }
         }
 
@@ -1020,11 +1034,14 @@
                 }
                 activeBubble = null;
 
-                // 1. Fetch ephemeral token
+                // 1. Fetch tokens for BOTH directions (doc→pat, pat→doc)
                 statusLabel.textContent = 'Authenticating';
-                const res = await fetch(`/token?sourceLanguage=${fromLang}&targetLanguage=${toLang}`);
-                if (!res.ok) throw new Error('세션 토큰 생성 실패');
-                const data = await res.json();
+                const [resA, resB] = await Promise.all([
+                    fetch(`/token?sourceLanguage=${docLang}&targetLanguage=${patLang}`),
+                    fetch(`/token?sourceLanguage=${patLang}&targetLanguage=${docLang}`)
+                ]);
+                if (!resA.ok || !resB.ok) throw new Error('세션 토큰 생성 실패');
+                const [dataA, dataB] = await Promise.all([resA.json(), resB.json()]);
 
                 // 2. Microphone access
                 statusLabel.textContent = 'Audio Init';
@@ -1040,71 +1057,83 @@
                 });
                 startVolumeMeter(mediaStream);
 
-                // 3. Setup Peer Connection
-                pc = new RTCPeerConnection();
+                originalMicTrack = mediaStream.getAudioTracks()[0];
 
-                pc.ontrack = (e) => {
-                    remoteOutputStream = e.streams[0];
-                    updateTTSAttachment();
-                };
-
-                const track = mediaStream.getAudioTracks()[0];
-                pc.addTrack(track, mediaStream);
-
-                // 4. Data Channel
-                dc = pc.createDataChannel('oai-events');
-
-                dc.onmessage = (e) => {
+                // 3. Setup BOTH Peer Connections
+                // 3A. Doctor → Patient
+                pcDocToPat = new RTCPeerConnection();
+                sendTrackDocToPat = originalMicTrack.clone();
+                pcDocToPat.addTrack(sendTrackDocToPat, new MediaStream([sendTrackDocToPat]));
+                sendTrackDocToPat.enabled = false;
+                pcDocToPat.ontrack = (e) => { remoteStreamDocToPat = e.streams[0]; updateTTSAttachment(); };
+                dcDocToPat = pcDocToPat.createDataChannel('oai-events');
+                dcDocToPat.onmessage = (e) => {
+                    if (currentDirection !== 'doc-to-pat') return;
                     try {
                         const event = JSON.parse(e.data);
-
                         if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
-                            if (event.delta) {
-                                updateMessage(event.delta, false);
-                                sttSeenThisTurn = true;
-                            }
+                            if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
                         }
-
                         if (event.type === 'session.input_transcript.done' || event.type === 'response.input_audio_transcript.done') {
-                            // Append any final text if provided by the API
                             const finalText = event.text || event.transcript || '';
-                            if (finalText) {
-                                updateMessage(finalText, false);
-                                sttSeenThisTurn = true;
-                            }
-                            console.log('[EVENT] input_transcript.done');
+                            if (finalText) { updateMessage(finalText, false); sttSeenThisTurn = true; }
                         }
-
                         if (event.type === 'session.output_transcript.delta') {
-                            if (!outputSeenThisTurn) {
-                                outputSeenThisTurn = true;
-                            }
+                            if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
                             updateMessage(event.delta, true);
                             lastOutputTranscriptTime = Date.now();
-                            // Fallback: if no more output events arrive within 2s, consider translation done
                             if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
-                            outputTranscriptDoneTimer = setTimeout(() => {
-                                console.log('[FALLBACK] No output_transcript.delta for 2s → translation done');
-                                outputTranscriptDoneTimer = null;
-                                onTranslationFinished();
-                            }, 2000);
+                            outputTranscriptDoneTimer = setTimeout(() => { onTranslationFinished(); }, 2000);
                         }
-                    } catch (err) {
-                        console.error(err);
-                    }
+                    } catch (err) { console.error(err); }
                 };
 
-                // 5. SDP Exchange
+                // 3B. Patient → Doctor
+                pcPatToDoc = new RTCPeerConnection();
+                sendTrackPatToDoc = originalMicTrack.clone();
+                pcPatToDoc.addTrack(sendTrackPatToDoc, new MediaStream([sendTrackPatToDoc]));
+                sendTrackPatToDoc.enabled = false;
+                pcPatToDoc.ontrack = (e) => { remoteStreamPatToDoc = e.streams[0]; updateTTSAttachment(); };
+                dcPatToDoc = pcPatToDoc.createDataChannel('oai-events');
+                dcPatToDoc.onmessage = (e) => {
+                    if (currentDirection !== 'pat-to-doc') return;
+                    try {
+                        const event = JSON.parse(e.data);
+                        if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
+                            if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
+                        }
+                        if (event.type === 'session.input_transcript.done' || event.type === 'response.input_audio_transcript.done') {
+                            const finalText = event.text || event.transcript || '';
+                            if (finalText) { updateMessage(finalText, false); sttSeenThisTurn = true; }
+                        }
+                        if (event.type === 'session.output_transcript.delta') {
+                            if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
+                            updateMessage(event.delta, true);
+                            lastOutputTranscriptTime = Date.now();
+                            if (outputTranscriptDoneTimer) clearTimeout(outputTranscriptDoneTimer);
+                            outputTranscriptDoneTimer = setTimeout(() => { onTranslationFinished(); }, 2000);
+                        }
+                    } catch (err) { console.error(err); }
+                };
+
+                // 4. SDP Exchange for BOTH PCs
                 statusLabel.textContent = 'Negotiating';
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                const sdpRes = await fetch('https://api.openai.com/v1/realtime/translations/calls', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${data.token}`, 'Content-Type': 'application/sdp' },
-                    body: offer.sdp
+                // doc→pat
+                const offerA = await pcDocToPat.createOffer();
+                await pcDocToPat.setLocalDescription(offerA);
+                const sdpResA = await fetch('https://api.openai.com/v1/realtime/translations/calls', {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${dataA.token}`, 'Content-Type': 'application/sdp' }, body: offerA.sdp
                 });
-                if (!sdpRes.ok) throw new Error('SDP 협상 에러');
-                await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
+                if (!sdpResA.ok) throw new Error('SDP 협상 에러 (doc→pat)');
+                await pcDocToPat.setRemoteDescription({ type: 'answer', sdp: await sdpResA.text() });
+                // pat→doc
+                const offerB = await pcPatToDoc.createOffer();
+                await pcPatToDoc.setLocalDescription(offerB);
+                const sdpResB = await fetch('https://api.openai.com/v1/realtime/translations/calls', {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${dataB.token}`, 'Content-Type': 'application/sdp' }, body: offerB.sdp
+                });
+                if (!sdpResB.ok) throw new Error('SDP 협상 에러 (pat→doc)');
+                await pcPatToDoc.setRemoteDescription({ type: 'answer', sdp: await sdpResB.text() });
 
                 // Connected
                 if (startBtn) {
@@ -1145,8 +1174,12 @@
             silenceStartTime = null;
             smoothedVolume = 0;
 
-            if (dc) { dc.close(); dc = null; }
-            if (pc) { pc.close(); pc = null; }
+            if (dc) { try { dc.close(); } catch {} dc = null; }
+            if (pc) { try { pc.close(); } catch {} pc = null; }
+            if (dcDocToPat) { try { dcDocToPat.close(); } catch {} dcDocToPat = null; }
+            if (dcPatToDoc) { try { dcPatToDoc.close(); } catch {} dcPatToDoc = null; }
+            if (pcDocToPat) { try { pcDocToPat.close(); } catch {} pcDocToPat = null; }
+            if (pcPatToDoc) { try { pcPatToDoc.close(); } catch {} pcPatToDoc = null; }
 
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());
@@ -1158,6 +1191,11 @@
 
             audioOutput.srcObject = null;
             remoteOutputStream = null;
+            remoteStreamDocToPat = null;
+            remoteStreamPatToDoc = null;
+            sendTrackDocToPat = null;
+            sendTrackPatToDoc = null;
+            originalMicTrack = null;
 
             if (startBtn) {
                 startBtn.textContent = 'Start';
@@ -1209,8 +1247,6 @@
             }
             if (!isConnected()) {
                 await start(true);
-            } else if (changed) {
-                await restartWithCurrentLanguages();
             }
         }
 
