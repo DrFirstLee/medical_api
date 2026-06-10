@@ -998,8 +998,11 @@
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
+                        // Disable aggressive front-end gating to avoid clipping the very beginning
+                        noiseSuppression: { ideal: false },
+                        autoGainControl: { ideal: false },
+                        channelCount: { ideal: 1 },
+                        latency: { ideal: 0.01 }
                     }
                 });
                 startVolumeMeter(mediaStream);
@@ -1169,13 +1172,24 @@
             }
         }
 
+        const PTT_WARMUP_MS = 140; // small arm delay to avoid clipping front syllables
+
         async function beginPTT(which) {
             try {
                 await ensureDirection(which);
                 // Start capturing
                 isPTTActive = true;
                 unmuteMicrophone();
-                enterSpeakingState();
+                // Optional haptic cue on mobile
+                if (navigator.vibrate) {
+                    try { navigator.vibrate(15); } catch (_) {}
+                }
+                // Give a tiny warm-up for EC/NS pipeline before we mark Speaking
+                setTimeout(() => {
+                    // In case user already released before warmup completes
+                    if (!isPTTActive) return;
+                    enterSpeakingState();
+                }, PTT_WARMUP_MS);
                 // Cancel translating timers if any
                 if (translatingWatchdog) { clearTimeout(translatingWatchdog); translatingWatchdog = null; }
                 if (translationFinishedTimeout) { clearTimeout(translationFinishedTimeout); translationFinishedTimeout = null; }
