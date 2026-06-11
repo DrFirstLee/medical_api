@@ -671,6 +671,7 @@
         let outputTranscriptDoneTimer = null; // Fallback: fires after last output_transcript.delta
         let lastOutputTranscriptTime = 0; // Timestamp of last output_transcript.delta received
         let translatingStartedAt = 0;
+        let meteredOutputStream = null;
         const MIN_TTS_TRANSLATING_MS = 3500; // Give short TTS audio time to arrive/play
 
         // UI elements
@@ -702,29 +703,37 @@
         let originalTextCommitted = '';
         let inputTranscriptDraft = '';
 
-        // Attach/detach remote audio based on TTS, PTT and state
+        // Keep remote audio attached; mute/unmute based on TTS, PTT and state.
         function updateTTSAttachment() {
             const chosenStream = (currentDirection === 'doc-to-pat') ? remoteStreamDocToPat : remoteStreamPatToDoc;
             if (!chosenStream) {
-                // Ensure detached when no stream
                 if (audioOutput.srcObject) {
                     audioOutput.srcObject = null;
                     stopOutputVolumeMeter();
                 }
+                audioOutput.muted = true;
+                audioOutput.volume = 0;
                 return;
             }
+
+            if (audioOutput.srcObject !== chosenStream) {
+                audioOutput.srcObject = chosenStream;
+                audioOutput.play().catch(() => {});
+                if (meteredOutputStream !== chosenStream) {
+                    stopOutputVolumeMeter();
+                    startOutputVolumeMeter(chosenStream);
+                    meteredOutputStream = chosenStream;
+                }
+            }
+
             const allowPlayback = ttsEnabled && !isPTTActive && interpreterState === 'TRANSLATING';
             if (allowPlayback) {
-                if (audioOutput.srcObject !== chosenStream) {
-                    audioOutput.srcObject = chosenStream;
-                    audioOutput.play().catch(() => {});
-                    startOutputVolumeMeter(chosenStream);
-                }
+                audioOutput.muted = false;
+                audioOutput.volume = 1;
+                audioOutput.play().catch(() => {});
             } else {
-                if (audioOutput.srcObject) {
-                    audioOutput.srcObject = null;
-                    stopOutputVolumeMeter();
-                }
+                audioOutput.muted = true;
+                audioOutput.volume = 0;
             }
         }
 
@@ -926,6 +935,7 @@
             if (outputAfId) cancelAnimationFrame(outputAfId);
             if (outputActx) outputActx.close().catch(() => { });
             outputActx = outputAnl = null;
+            meteredOutputStream = null;
             isTranslationPlaying = false;
             if (translationFinishedTimeout) {
                 clearTimeout(translationFinishedTimeout);
