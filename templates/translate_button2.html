@@ -699,6 +699,8 @@
         let sttSeenThisTurn = false;
         let outputSeenThisTurn = false;
         let sttFallbackInserted = false;
+        let originalTextCommitted = '';
+        let inputTranscriptDraft = '';
 
         // Attach/detach remote audio based on TTS, PTT and state
         function updateTTSAttachment() {
@@ -1031,6 +1033,35 @@
             historyCard.scrollTop = historyCard.scrollHeight;
         }
 
+        function setOriginalMessage(text) {
+            updateMessage('', false);
+            const pElement = activeBubble?.querySelector('.original-text');
+            if (pElement) pElement.textContent = text;
+            historyCard.scrollTop = historyCard.scrollHeight;
+        }
+
+        function commitInputTranscript(finalText) {
+            if (!finalText) return;
+            const separator = originalTextCommitted && !originalTextCommitted.endsWith(' ') ? ' ' : '';
+            originalTextCommitted = `${originalTextCommitted}${separator}${finalText}`;
+            inputTranscriptDraft = '';
+            setOriginalMessage(originalTextCommitted);
+            sttSeenThisTurn = true;
+        }
+
+        function appendInputTranscriptDelta(delta) {
+            if (!delta) return;
+            inputTranscriptDraft += delta;
+            setOriginalMessage(originalTextCommitted + inputTranscriptDraft);
+            sttSeenThisTurn = true;
+        }
+
+        function resetInputTranscriptDraft() {
+            const pElement = activeBubble?.querySelector('.original-text');
+            originalTextCommitted = pElement?.textContent || '';
+            inputTranscriptDraft = '';
+        }
+
         // ===== Start / Stop =====
         async function start(keepHistory = true) {
             try {
@@ -1096,11 +1127,11 @@
                         const event = JSON.parse(e.data);
                         console.log('[OAI EVENT][doc-to-pat]', event.type, event);
                         if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
-                            if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
+                            appendInputTranscriptDelta(event.delta);
                         }
                         if (event.type === 'session.input_transcript.done' || event.type === 'response.input_audio_transcript.done') {
                             const finalText = event.text || event.transcript || '';
-                            if (finalText) { updateMessage(finalText, false); sttSeenThisTurn = true; }
+                            commitInputTranscript(finalText);
                         }
                         if (event.type === 'session.output_transcript.delta') {
                             if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
@@ -1124,11 +1155,11 @@
                         const event = JSON.parse(e.data);
                         console.log('[OAI EVENT][pat-to-doc]', event.type, event);
                         if (event.type === 'session.input_transcript.delta' || event.type === 'response.input_audio_transcript.delta') {
-                            if (event.delta) { updateMessage(event.delta, false); sttSeenThisTurn = true; }
+                            appendInputTranscriptDelta(event.delta);
                         }
                         if (event.type === 'session.input_transcript.done' || event.type === 'response.input_audio_transcript.done') {
                             const finalText = event.text || event.transcript || '';
-                            if (finalText) { updateMessage(finalText, false); sttSeenThisTurn = true; }
+                            commitInputTranscript(finalText);
                         }
                         if (event.type === 'session.output_transcript.delta') {
                             if (!outputSeenThisTurn) { outputSeenThisTurn = true; }
@@ -1283,6 +1314,7 @@
                 sttSeenThisTurn = false;
                 outputSeenThisTurn = false;
                 sttFallbackInserted = false;
+                resetInputTranscriptDraft();
                 updateTTSAttachment(); // ensure output is muted while speaking
                 unmuteMicrophone();
                 // Optional haptic cue on mobile
