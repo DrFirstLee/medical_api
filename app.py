@@ -48,6 +48,7 @@ ADMIN_PW = os.getenv("FASTAPI_PW")
 
 # OpenAI API 설정
 OPENAI_API_KEY = os.getenv("OPENAPI_KEY", "")
+GEMINI_KEY = os.getenv("GEMINI_KEY", "")
 LLM_MODEL = "gpt-4.1-nano-2025-04-14"
 LLM_MODEL_2 = "gpt-5.4-nano-2026-03-17"
 STT_MODEL = "gpt-4o-transcribe"
@@ -368,6 +369,25 @@ async def translate_button_page2():
     Translate button page.
     """
     return FileResponse("templates/translate_button2.html")
+
+@app.get("/translate-gemini", response_class=FileResponse)
+async def translate_gemini_page_alias():
+    """
+    Hyphenated alias for the Gemini realtime medical interpreter page.
+    """
+    return FileResponse("templates/translate_gemini.html")
+
+@app.get("/key")
+async def get_gemini_key():
+    """
+    Provide the Gemini API key to the local realtime interpreter frontend.
+    """
+    if not GEMINI_KEY:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "GEMINI_KEY is not defined in the .env file."},
+        )
+    return {"key": GEMINI_KEY}
 
 @app.get("/token")
 async def get_realtime_token(sourceLanguage: str = "en", targetLanguage: str = "en"):

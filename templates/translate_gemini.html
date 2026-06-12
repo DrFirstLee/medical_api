@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swift Medical Interpreter</title>
+
+    <!-- Modern Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-hover-border: rgba(255, 255, 255, 0.18);
+            --primary: #8b5cf6;
+            /* Violet */
+            --primary-glow: rgba(139, 92, 246, 0.3);
+            --secondary: #06b6d4;
+            /* Cyan */
+            --secondary-glow: rgba(6, 182, 212, 0.3);
+            --accent: #10b981;
+            /* Emerald */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --error: #ef4444;
+            --chat-font-size: 14.5px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 24px;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Background Ambient Glows */
+        .glow-purple {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, var(--primary-glow) 0%, rgba(0, 0, 0, 0) 70%);
+            top: 10%;
+            left: 15%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .glow-cyan {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--secondary-glow) 0%, rgba(0, 0, 0, 0) 70%);
+            bottom: 10%;
+            right: 15%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 1040px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .sticky-controls {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: -24px;
+            padding: 24px 0 16px;
+            background: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+            box-shadow: 0 18px 28px rgba(11, 15, 25, 0.95);
+        }
+
+        /* Header styling */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px;
+            background: rgba(14, 20, 34, 0.98);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+        }
+
+        .logo-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: #ffffff;
+        }
+
+        .logo-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #d1d5db 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-extra {
+            display: inline;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 99px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+            color: var(--text-main);
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .status-badge:hover:not(:disabled) {
+            border-color: var(--glass-hover-border);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .status-badge:disabled {
+            cursor: wait;
+            opacity: 0.75;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+            box-shadow: 0 0 8px var(--text-muted);
+            transition: all 0.3s ease;
+        }
+
+        /* Status specific classes */
+        .status-badge.connected {
+            border-color: rgba(6, 182, 212, 0.4);
+            color: var(--secondary);
+        }
+
+        .status-badge.connected .status-dot {
+            background-color: var(--secondary);
+            box-shadow: 0 0 10px var(--secondary);
+        }
+
+        .status-badge.listening {
+            border-color: rgba(16, 185, 129, 0.4);
+            color: var(--accent);
+        }
+
+        .status-badge.listening .status-dot {
+            background-color: var(--accent);
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-badge.speaking {
+            border-color: rgba(139, 92, 246, 0.4);
+            color: var(--primary);
+        }
+
+        .status-badge.speaking .status-dot {
+            background-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            animation: pulse 0.8s infinite;
+        }
+
+        .status-badge.error-state {
+            border-color: rgba(239, 68, 68, 0.4);
+            color: var(--error);
+        }
+
+        .status-badge.error-state .status-dot {
+            background-color: var(--error);
+            box-shadow: 0 0 10px var(--error);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                opacity: 0.5;
+            }
+
+            50% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(0.95);
+                opacity: 0.5;
+            }
+        }
+
+        /* Translation Settings Card */
+        .selector-card {
+            background: rgba(14, 20, 34, 0.98);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .lang-section {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .lang-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex: 0 0 auto;
+        }
+
+        .select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .lang-select {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 10px 34px 10px 14px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            transition: all 0.2s ease;
+        }
+
+        .lang-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .select-wrapper::after {
+            content: '▼';
+            font-size: 10px;
+            color: var(--text-muted);
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+        }
+
+        .swap-button {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 0;
+            flex: 0 0 auto;
+        }
+
+        .settings-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: rgba(14, 20, 34, 0.98);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 12px 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.18);
+        }
+
+        .setting-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .setting-label {
+            width: 94px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            flex: 0 0 auto;
+        }
+
+        .setting-slider {
+            flex: 1;
+            min-width: 0;
+            accent-color: var(--secondary);
+            cursor: pointer;
+        }
+
+        @media (max-width: 720px) {
+            body {
+                padding: 16px;
+            }
+
+            .sticky-controls {
+                margin-top: -16px;
+                padding: 16px 0 12px;
+            }
+
+            header {
+                padding: 10px 12px;
+                border-radius: 16px;
+            }
+
+            .logo-area {
+                gap: 8px;
+                min-width: 0;
+            }
+
+            .logo-icon {
+                width: 32px;
+                height: 32px;
+                border-radius: 9px;
+            }
+
+            .logo-text {
+                font-size: 20px;
+                white-space: nowrap;
+            }
+
+            .logo-extra {
+                display: none;
+            }
+
+            .status-badge {
+                padding: 7px 10px;
+                font-size: 11px;
+            }
+
+            .selector-card {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 10px 12px;
+                border-radius: 14px;
+            }
+
+            .lang-section {
+                width: 100%;
+                gap: 8px;
+            }
+
+            .lang-label {
+                width: 64px;
+            }
+
+            .swap-button {
+                align-self: center;
+                width: 34px;
+                height: 34px;
+                transform: rotate(90deg);
+            }
+
+            .swap-button:hover {
+                transform: rotate(270deg) scale(1.05);
+            }
+
+            .settings-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+                padding: 10px 12px;
+            }
+
+            .setting-label {
+                width: 86px;
+            }
+        }
+
+        .swap-button:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: rotate(180deg) scale(1.05);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .swap-button:active {
+            transform: scale(0.95);
+        }
+
+        /* Main Workspace Split Grid */
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+            height: 560px;
+        }
+
+        @media (max-width: 868px) {
+            .workspace-grid {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+        }
+
+        /* Chat Area (KakaoTalk Style) */
+        .chat-panel {
+            background: #abc1d1;
+            /* KakaoTalk Classic Blue-Gray */
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 28px;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08), 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Scrollbar styled for Kakao background */
+        .chat-history::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-history::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        .chat-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: rgba(0, 0, 0, 0.35);
+            gap: 16px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .chat-placeholder svg {
+            width: 48px;
+            height: 48px;
+            stroke: rgba(0, 0, 0, 0.35);
+            opacity: 0.8;
+        }
+
+        /* Kakao talk row layouts */
+        .kakao-row {
+            display: flex;
+            width: 100%;
+            scroll-margin-bottom: 24px;
+            animation: slideIn 0.25s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .kakao-row.left {
+            justify-content: flex-start;
+        }
+
+        .kakao-row.right {
+            justify-content: flex-end;
+        }
+
+        /* Avatar & Name Column (Left side) */
+        .kakao-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 15px;
+            background: #ffffff;
+            color: #333333;
+            font-weight: 700;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+            flex-shrink: 0;
+        }
+
+        .kakao-content-col {
+            display: flex;
+            flex-direction: column;
+            max-width: 70%;
+        }
+
+        .kakao-speaker-name {
+            font-size: 11px;
+            color: #3c4a56;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+
+        /* Kakao Bubble Base */
+        .kakao-bubble {
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: var(--chat-font-size);
+            color: #191919;
+            position: relative;
+            line-height: 1.45;
+            word-break: break-word;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Left: White Bubble */
+        .kakao-row.left .kakao-bubble {
+            background: #ffffff;
+            border-top-left-radius: 2px;
+        }
+
+        /* Right: Yellow Bubble */
+        .kakao-row.right .kakao-bubble {
+            background: #fee500;
+            border-top-right-radius: 2px;
+        }
+
+        /* Text details inside bubble */
+        .kakao-text-original {
+            font-weight: 500;
+            color: #191919;
+        }
+
+        .kakao-text-translated {
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed rgba(0, 0, 0, 0.1);
+            font-size: calc(var(--chat-font-size) - 1.5px);
+            color: #444444;
+            font-weight: 700;
+        }
+
+        /* System Badge */
+        .kakao-system-row {
+            display: flex;
+            justify-content: center;
+            margin: 8px 0;
+            width: 100%;
+        }
+
+        .kakao-system-badge {
+            background: rgba(0, 0, 0, 0.12);
+            color: #ffffff;
+            padding: 5px 14px;
+            border-radius: 99px;
+            font-size: 11px;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        .session-technical {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Ambient Glow Elements -->
+    <div class="glow-purple"></div>
+    <div class="glow-cyan"></div>
+
+    <div class="app-container">
+
+        <div class="sticky-controls">
+            <!-- Top Header -->
+            <header>
+                <div class="logo-area">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path
+                                d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2h11.17C11.5 7.69 10.56 9.18 9.5 10.5c-.66-.74-1.2-1.61-1.63-2.5H5.87c.47 1.25 1.17 2.42 2.1 3.5l-5.11 5.07 1.41 1.41 4.79-4.75 3.1 3.08 1.71-1.74zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" />
+                        </svg>
+                    </div>
+                    <div class="logo-text">Swift<span class="logo-extra"> Medical Interpreter</span></div>
+                </div>
+
+                <button class="status-badge" id="statusBadge" type="button" title="Start session">
+                    <div class="status-dot"></div>
+                    <span id="statusText">Disconnected</span>
+                </button>
+            </header>
+
+            <!-- Language Selector Card -->
+            <div class="selector-card">
+                <div class="lang-section">
+                    <span class="lang-label">Doctor</span>
+                    <div class="select-wrapper">
+                        <select id="fromLanguage" class="lang-select">
+                            <option value="ko" selected>Korean</option>
+                            <option value="en">English</option>
+                            <option value="ja">Japanese</option>
+                            <option value="zh">Chinese</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="swap-button" id="swapBtn" title="Swap languages">
+                    ⇄
+                </button>
+
+                <div class="lang-section">
+                    <span class="lang-label">Patient</span>
+                    <div class="select-wrapper">
+                        <select id="toLanguage" class="lang-select">
+                            <option value="en" selected>English</option>
+                            <option value="ko">Korean</option>
+                            <option value="ja">Japanese</option>
+                            <option value="zh">Chinese</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <label class="setting-group" for="fontSizeControl">
+                    <span class="setting-label">Text Size</span>
+                    <input class="setting-slider" type="range" min="12" max="22" step="1" value="15"
+                        id="fontSizeControl">
+                </label>
+
+                <label class="setting-group" for="volumeControl">
+                    <span class="setting-label">TTS Volume</span>
+                    <input class="setting-slider" type="range" min="0" max="1" step="0.05" value="1"
+                        id="volumeControl">
+                </label>
+            </div>
+        </div>
+
+        <!-- Workspace Grid -->
+        <div class="workspace-grid">
+
+            <!-- Chat Panel -->
+            <div class="chat-panel">
+                <div class="chat-history" id="chatHistory">
+                    <div class="chat-placeholder" id="chatPlaceholder">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <p>Start the session, then speak naturally in either language.<br>Interpretation begins automatically when speech is detected.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="session-technical" aria-hidden="true">
+            <p id="actionPrompt">Ready to connect</p>
+            <canvas id="visualizerCanvas"></canvas>
+            <div id="visualizerOverlay">Offline</div>
+        </div>
+    </div>
+
+    <script>
+        // Constants
+        const SEND_SAMPLE_RATE = 16000;
+        const RECEIVE_SAMPLE_RATE = 24000;
+        const TTS_FALLBACK_PLAYBACK_DELAY_MS = 550;
+        const TTS_SILENCE_THRESHOLD = 0.003;
+        const TTS_SILENCE_PADDING_SAMPLES = 120;
+
+        // UI Elements
+        const statusBadge = document.getElementById('statusBadge');
+        const statusText = document.getElementById('statusText');
+        const startBtn = statusBadge;
+        const actionPrompt = document.getElementById('actionPrompt');
+        const fromSelect = document.getElementById('fromLanguage');
+        const toSelect = document.getElementById('toLanguage');
+        const swapBtn = document.getElementById('swapBtn');
+        const chatHistory = document.getElementById('chatHistory');
+        const chatPlaceholder = document.getElementById('chatPlaceholder');
+        const canvas = document.getElementById('visualizerCanvas');
+        const visualizerOverlay = document.getElementById('visualizerOverlay');
+        const fontSizeControl = document.getElementById('fontSizeControl');
+        const volumeControl = document.getElementById('volumeControl');
+
+        // App State
+        let isConnected = false;
+        let sockets = {};
+        let socketSetupCompleteCount = 0;
+        let geminiApiKey = null;
+        let leftLangCode = "";
+        let rightLangCode = "";
+        let leftLangName = "";
+        let rightLangName = "";
+        let activeFromLangCode = "";
+        let activeToLangCode = "";
+        let activeTranslationRouteId = "";
+        let lastInputTranscriptionText = "";
+        let activeBubbleLangCode = "";
+        let audioContext = null;
+        let outputAudioContext = null;
+        let audioWorkletNode = null;
+        let playbackWorkletNode = null;
+        let microphoneStream = null;
+        let gainNode = null;
+        let pendingTtsChunks = [];
+        let ttsPlaybackDelayTimer = null;
+        let ttsPlaybackFinishTimer = null;
+        let isTtsPlaying = false;
+
+        // Canvas Visualization
+        let canvasCtx = canvas.getContext('2d');
+        let analyser = null;
+        let drawVisualId = null;
+        let isRecording = false;
+        let scrollChatFrameId = null;
+
+        // Chat transcription blocks (KakaoTalk Style)
+        let activeBubbleContainer = null;
+        let activeOriginalTextElement = null;
+        let activeTranslatedTextElement = null;
+
+        function scrollChatToBottom() {
+            if (!chatHistory) return;
+
+            if (scrollChatFrameId) {
+                cancelAnimationFrame(scrollChatFrameId);
+            }
+
+            const forceScroll = () => {
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                const lastMessage = chatHistory.lastElementChild;
+                if (lastMessage) {
+                    lastMessage.scrollIntoView({ block: 'end', inline: 'nearest' });
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                }
+            };
+
+            forceScroll();
+            scrollChatFrameId = requestAnimationFrame(() => {
+                forceScroll();
+                scrollChatFrameId = requestAnimationFrame(() => {
+                    forceScroll();
+                    scrollChatFrameId = null;
+                });
+            });
+        }
+
+        const chatMutationObserver = new MutationObserver(scrollChatToBottom);
+        chatMutationObserver.observe(chatHistory, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+
+        if ('ResizeObserver' in window) {
+            const chatResizeObserver = new ResizeObserver(scrollChatToBottom);
+            chatResizeObserver.observe(chatHistory);
+        }
+
+        // Configure select check
+        function validateLanguages() {
+            if (fromSelect.value === toSelect.value) {
+                // Find first option in target that is different and select it
+                for (let option of toSelect.options) {
+                    if (option.value !== fromSelect.value) {
+                        toSelect.value = option.value;
+                        break;
+                    }
+                }
+            }
+        }
+        fromSelect.addEventListener('change', validateLanguages);
+        toSelect.addEventListener('change', validateLanguages);
+
+        // Language swapping
+        swapBtn.addEventListener('click', () => {
+            const temp = fromSelect.value;
+            fromSelect.value = toSelect.value;
+            toSelect.value = temp;
+            validateLanguages();
+
+            // If active session is running, restart with the new configuration
+            if (isConnected) {
+                console.log("Language swapped during active session, reconnecting...");
+                stopSession().then(() => {
+                    setTimeout(startSession, 500);
+                });
+            }
+        });
+
+        // Handle session click
+        startBtn.addEventListener('click', () => {
+            if (isConnected) {
+                stopSession();
+            } else {
+                startSession();
+            }
+        });
+
+        // Start Realtime Session
+        async function startSession() {
+            try {
+                setUIConnecting();
+
+                // Save initial selected languages to determine left vs right
+                leftLangCode = fromSelect.value;
+                rightLangCode = toSelect.value;
+                leftLangName = fromSelect.options[fromSelect.selectedIndex].text;
+                rightLangName = toSelect.options[toSelect.selectedIndex].text;
+
+                activeFromLangCode = leftLangCode;
+                activeToLangCode = rightLangCode;
+
+                // 1. Fetch API Key from server
+                const keyResponse = await fetch('/key');
+                if (!keyResponse.ok) {
+                    throw new Error("Failed to fetch GEMINI_KEY from backend server.");
+                }
+                const { key } = await keyResponse.json();
+
+                // 2. Initialize AudioContext and load Worklets
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: SEND_SAMPLE_RATE // 16kHz for input
+                });
+
+                // Setup audio analyzer for visualizer
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+
+                // Build inline capture worklet Blob
+                const captureCode = `
+          class AudioCaptureProcessor extends AudioWorkletProcessor {
+            process(inputs, outputs, parameters) {
+              const input = inputs[0];
+              if (input && input[0]) {
+                this.port.postMessage(input[0]);
+              }
+              return true;
+            }
+          }
+          registerProcessor('audio-capture-processor', AudioCaptureProcessor);
+        `;
+                const captureBlob = new Blob([captureCode], { type: 'application/javascript' });
+                const captureUrl = URL.createObjectURL(captureBlob);
+                await audioContext.audioWorklet.addModule(captureUrl);
+
+                // Build inline playback worklet Blob
+                const playbackCode = `
+          class PcmProcessor extends AudioWorkletProcessor {
+            constructor() {
+              super();
+              this.buffer = [];
+              this.port.onmessage = (e) => {
+                if (e.data === 'interrupt') {
+                  this.buffer = [];
+                } else {
+                  this.buffer.push(...e.data);
+                }
+              };
+            }
+            process(inputs, outputs, parameters) {
+              const output = outputs[0];
+              if (!output || !output[0]) return true;
+              const channel = output[0];
+              const len = channel.length;
+              
+              if (this.buffer.length >= len) {
+                const chunk = this.buffer.splice(0, len);
+                for (let i = 0; i < len; i++) {
+                  channel[i] = chunk[i];
+                }
+              } else {
+                const available = this.buffer.length;
+                const chunk = this.buffer.splice(0, available);
+                for (let i = 0; i < available; i++) {
+                  channel[i] = chunk[i];
+                }
+                for (let i = available; i < len; i++) {
+                  channel[i] = 0;
+                }
+              }
+              return true;
+            }
+          }
+          registerProcessor('pcm-processor', PcmProcessor);
+        `;
+                const playbackBlob = new Blob([playbackCode], { type: 'application/javascript' });
+                const playbackUrl = URL.createObjectURL(playbackBlob);
+
+                // We need another context at 24kHz for playback, or resample.
+                // Easiest is to create a separate AudioContext running at 24kHz for the output speaker.
+                outputAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: RECEIVE_SAMPLE_RATE // 24kHz for output
+                });
+                await outputAudioContext.audioWorklet.addModule(playbackUrl);
+                await outputAudioContext.resume();
+                console.log(`[DEBUG] output audio sampleRate=${outputAudioContext.sampleRate}`);
+
+                playbackWorkletNode = new AudioWorkletNode(outputAudioContext, 'pcm-processor');
+                gainNode = outputAudioContext.createGain();
+                gainNode.gain.value = parseFloat(volumeControl.value);
+
+                playbackWorkletNode.connect(gainNode);
+                gainNode.connect(outputAudioContext.destination);
+
+                // 3. Request microphone access
+                microphoneStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: SEND_SAMPLE_RATE,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                const micSource = audioContext.createMediaStreamSource(microphoneStream);
+                audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-capture-processor');
+
+                // Connect mic input to capture worklet and analyzer
+                micSource.connect(audioWorkletNode);
+                micSource.connect(analyser);
+
+                // Start drawing the visualizer wave
+                visualizerOverlay.style.display = 'none';
+                startVisualizer();
+
+                // 4. Connect to both Gemini Live directions for instant language switching
+                geminiApiKey = key;
+                connectWebSockets(key);
+
+                // 5. Pipe Mic data from worklet to WebSocket
+                audioWorkletNode.port.onmessage = (event) => {
+                    const openSockets = Object.values(sockets).filter(socket => socket.readyState === WebSocket.OPEN);
+                    if (openSockets.length > 0 && isRecording) {
+                        const float32Array = event.data;
+                        const pcmBuffer = convertToPCM16(float32Array);
+                        const base64Audio = arrayBufferToBase64(pcmBuffer);
+
+                        const audioMessage = {
+                            realtimeInput: {
+                                mediaChunks: [
+                                    {
+                                        mimeType: `audio/pcm;rate=${SEND_SAMPLE_RATE}`,
+                                        data: base64Audio
+                                    }
+                                ]
+                            }
+                        };
+                        const encodedMessage = JSON.stringify(audioMessage);
+                        openSockets.forEach(socket => socket.send(encodedMessage));
+                    }
+                };
+
+                isConnected = true;
+                isRecording = true;
+
+            } catch (err) {
+                console.error("Error starting session:", err);
+                setUIError(err.message || "Microphone Error");
+                cleanupSession();
+            }
+        }
+
+        // Stop and cleanup session
+        async function stopSession() {
+            cleanupSession();
+        }
+
+        function cleanupSession() {
+            isConnected = false;
+            isRecording = false;
+            clearPendingTtsPlayback();
+
+            for (const socket of Object.values(sockets)) {
+                socket.onclose = null;
+                socket.onerror = null;
+                if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+                    socket.close();
+                }
+            }
+            sockets = {};
+            socketSetupCompleteCount = 0;
+
+            if (audioWorkletNode) {
+                audioWorkletNode.disconnect();
+                audioWorkletNode = null;
+            }
+
+            if (playbackWorkletNode) {
+                playbackWorkletNode.port.postMessage("interrupt");
+                playbackWorkletNode.disconnect();
+                playbackWorkletNode = null;
+            }
+
+            if (microphoneStream) {
+                microphoneStream.getTracks().forEach(track => track.stop());
+                microphoneStream = null;
+            }
+
+            if (audioContext) {
+                audioContext.close().catch(() => { });
+                audioContext = null;
+            }
+
+            if (outputAudioContext) {
+                outputAudioContext.close().catch(() => { });
+                outputAudioContext = null;
+            }
+
+            activeBubbleContainer = null;
+            activeOriginalTextElement = null;
+            activeTranslatedTextElement = null;
+            activeTranslationRouteId = "";
+            lastInputTranscriptionText = "";
+            activeBubbleLangCode = "";
+
+            stopVisualizer();
+            setUIDisconnected();
+        }
+
+        function clearPendingTtsPlayback() {
+            if (ttsPlaybackDelayTimer) {
+                clearTimeout(ttsPlaybackDelayTimer);
+                ttsPlaybackDelayTimer = null;
+            }
+
+            if (ttsPlaybackFinishTimer) {
+                clearTimeout(ttsPlaybackFinishTimer);
+                ttsPlaybackFinishTimer = null;
+            }
+
+            pendingTtsChunks = [];
+            isTtsPlaying = false;
+        }
+
+        // Send the Gemini Live Translate setup configuration
+        function sendSetupMessage(socket, route) {
+            const targetLang = route.targetLangCode;
+            const setupMessage = {
+                setup: {
+                    model: "models/gemini-3.5-live-translate-preview",
+                    systemInstruction: {
+                        parts: [{
+                            text: [
+                                "You are a professional medical interpreter for a hospital setting.",
+                                "Interpret conversations between doctors, nurses, clinical staff, patients, and caregivers.",
+                                "Preserve the speaker's meaning, tone, symptoms, timelines, medication names, dosages, allergies, medical history, and clinical instructions as accurately as possible.",
+                                "Do not add medical advice, diagnoses, reassurance, explanations, or extra information that the speaker did not say.",
+                                "If a term is ambiguous, translate it literally and keep uncertainty rather than guessing.",
+                                "Keep translations concise, natural, and suitable for spoken clinical communication.",
+                                "Maintain privacy and use respectful, neutral language."
+                            ].join(" ")
+                        }]
+                    },
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        translationConfig: {
+                            targetLanguageCode: targetLang,
+                            echoTargetLanguage: false
+                        }
+                    },
+                    inputAudioTranscription: {},
+                    outputAudioTranscription: {},
+                    realtimeInputConfig: {
+                        automaticActivityDetection: {
+                            disabled: false
+                        }
+                    }
+                }
+            };
+
+            console.log("Sending Setup configuration:", setupMessage);
+            socket.send(JSON.stringify(setupMessage));
+        }
+
+        // Helper functions for language detection and dynamic WebSocket swapping
+        function matchLanguage(detectedCode, selectValue) {
+            if (!detectedCode || !selectValue) return false;
+            const det = detectedCode.toLowerCase();
+            const sel = selectValue.toLowerCase();
+            return det.startsWith(sel) || sel.startsWith(det);
+        }
+
+        function detectLanguageFromText(text, langA, langB) {
+            if (!text) return null;
+            const cleanText = text.trim();
+            if (cleanText.length === 0) return null;
+
+            const hasHangul = /[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]/i.test(cleanText);
+            const hasKana = /[\u3040-\u309f\u30a0-\u30ff]/i.test(cleanText);
+            const hasKanji = /[\u4e00-\u9fa5]/.test(cleanText);
+
+            let textScript = 'latin';
+            if (hasHangul) textScript = 'hangul';
+            else if (hasKana) textScript = 'kana';
+            else if (hasKanji) textScript = 'kanji';
+
+            const getScript = (lang) => {
+                const l = lang.toLowerCase();
+                if (l.startsWith('ko')) return 'hangul';
+                if (l.startsWith('ja')) return 'kana';
+                if (l.startsWith('zh')) return 'kanji';
+                return 'latin';
+            };
+
+            const scriptA = getScript(langA);
+            const scriptB = getScript(langB);
+
+            if (scriptA !== scriptB) {
+                if (textScript === scriptA) return langA;
+                if (textScript === scriptB) return langB;
+                if (textScript === 'hangul') return 'ko';
+                if (textScript === 'kana') return 'ja';
+                if (textScript === 'kanji') return 'zh';
+                if (scriptA === 'latin') return langA;
+                if (scriptB === 'latin') return langB;
+            }
+
+            const words = cleanText.toLowerCase().split(/\s+/);
+            const englishWords = new Set(['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me']);
+            const spanishWords = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'y', 'en', 'que', 'de', 'es', 'esta', 'como', 'con', 'para', 'por', 'lo', 'se', 'su', 'al', 'del', 'no', 'si', 'pero', 'mas', 'o', 'mi', 'tu', 'su', 'yo', 'me', 'le', 'nos', 'les']);
+            const frenchWords = new Set(['le', 'la', 'les', 'et', 'en', 'que', 'de', 'est', 'une', 'dans', 'pour', 'qui', 'ce', 'dans', 'sur', 'avec', 'plus', 'tout', 'par', 'pas', 'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles', 'un', 'aux']);
+            const germanWords = new Set(['der', 'die', 'das', 'und', 'ist', 'in', 'zu', 'den', 'von', 'mit', 'auf', 'für', 'ist', 'war', 'sich', 'sie', 'es', 'ich', 'wir', 'ihr', 'du', 'er', 'nicht', 'mit', 'auch', 'wie', 'an', 'als']);
+
+            const getScore = (wordSet) => {
+                let score = 0;
+                for (const word of words) {
+                    if (wordSet.has(word)) score++;
+                }
+                return score;
+            };
+
+            const scoreA = getScore(langA.startsWith('es') ? spanishWords : langA.startsWith('fr') ? frenchWords : langA.startsWith('de') ? germanWords : englishWords);
+            const scoreB = getScore(langB.startsWith('es') ? spanishWords : langB.startsWith('fr') ? frenchWords : langB.startsWith('de') ? germanWords : englishWords);
+
+            if (scoreA > scoreB) return langA;
+            if (scoreB > scoreA) return langB;
+
+            return langA;
+        }
+
+        function getTranslationRoutes() {
+            return {
+                leftToRight: {
+                    id: 'leftToRight',
+                    sourceLangCode: leftLangCode,
+                    targetLangCode: rightLangCode,
+                    sourceLangName: leftLangName,
+                    targetLangName: rightLangName
+                },
+                rightToLeft: {
+                    id: 'rightToLeft',
+                    sourceLangCode: rightLangCode,
+                    targetLangCode: leftLangCode,
+                    sourceLangName: rightLangName,
+                    targetLangName: leftLangName
+                }
+            };
+        }
+
+        function getRouteForLanguage(langCode) {
+            const routes = getTranslationRoutes();
+            if (matchLanguage(langCode, rightLangCode)) return routes.rightToLeft;
+            return routes.leftToRight;
+        }
+
+        function activateRouteForLanguage(langCode) {
+            const route = getRouteForLanguage(langCode);
+            if (activeTranslationRouteId !== route.id) {
+                activeBubbleContainer = null;
+                activeOriginalTextElement = null;
+                activeTranslatedTextElement = null;
+                activeBubbleLangCode = "";
+            }
+
+            activeTranslationRouteId = route.id;
+            activeFromLangCode = route.sourceLangCode;
+            activeToLangCode = route.targetLangCode;
+            actionPrompt.textContent = `Live interpretation: ${route.sourceLangName} ⇄ ${route.targetLangName}`;
+            return route;
+        }
+
+        function shouldAcceptRoute(route) {
+            return activeTranslationRouteId === route.id;
+        }
+
+        function getNewTranscriptionText(currentText) {
+            const current = currentText || "";
+            const previous = lastInputTranscriptionText || "";
+            lastInputTranscriptionText = current;
+
+            if (!previous) return current;
+            if (current.startsWith(previous)) return current.slice(previous.length);
+            return current;
+        }
+
+        function addSystemMessage(text) {
+            // Remove placeholder on first message
+            const placeholder = document.getElementById('chatPlaceholder');
+            if (placeholder) {
+                placeholder.remove();
+            }
+
+            const row = document.createElement('div');
+            row.className = 'message-row';
+            row.style.alignItems = 'center';
+            row.style.margin = '10px 0';
+            row.style.width = '100%';
+            row.style.display = 'flex';
+            row.style.justifyContent = 'center';
+
+            const badge = document.createElement('div');
+            badge.style.background = 'rgba(139, 92, 246, 0.15)';
+            badge.style.border = '1px solid rgba(139, 92, 246, 0.3)';
+            badge.style.color = '#c084fc';
+            badge.style.padding = '6px 16px';
+            badge.style.borderRadius = '99px';
+            badge.style.fontSize = '12px';
+            badge.style.fontWeight = '600';
+            badge.style.textAlign = 'center';
+            badge.textContent = text;
+
+            row.appendChild(badge);
+            chatHistory.appendChild(row);
+            scrollChatToBottom();
+        }
+
+        function connectWebSockets(key) {
+            sockets = {};
+            socketSetupCompleteCount = 0;
+
+            const routes = getTranslationRoutes();
+            connectWebSocket(key, routes.leftToRight);
+            connectWebSocket(key, routes.rightToLeft);
+        }
+
+        async function connectWebSocket(key, route) {
+            const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${key}`;
+            const socket = new WebSocket(wsUrl);
+            sockets[route.id] = socket;
+
+            socket.onopen = () => {
+                console.log(`WebSocket connected to Gemini Live API (${route.id})`);
+                sendSetupMessage(socket, route);
+            };
+
+            socket.onmessage = async (event) => {
+                try {
+                    let data = event.data;
+                    if (data instanceof Blob) {
+                        data = await data.text();
+                    }
+                    handleServerMessage(data, route);
+                } catch (err) {
+                    console.error("Error reading WebSocket message:", err);
+                }
+            };
+
+            socket.onerror = (error) => {
+                console.error(`WebSocket error (${route.id}):`, error);
+                setUIError("WebSocket Error");
+            };
+
+            socket.onclose = (event) => {
+                console.log(`WebSocket connection closed (${route.id}):`, event.code, event.reason);
+                if (isConnected) {
+                    cleanupSession();
+                }
+            };
+        }
+
+        // Handle messages coming from Gemini Server
+        function handleServerMessage(data, route) {
+            try {
+                const message = JSON.parse(data);
+
+                // 1. Setup complete response
+                if (message.setupComplete) {
+                    socketSetupCompleteCount += 1;
+                    console.log(`Gemini Live Session setup complete! (${route.id})`);
+                    if (socketSetupCompleteCount >= 2) {
+                        setUIConnected();
+                    }
+                    return;
+                }
+
+                // 2. Play Audio response
+                const serverContent = message.serverContent;
+                if (serverContent) {
+                    const hasInputText = serverContent.inputTranscription && serverContent.inputTranscription.text;
+                    const hasOutputText = serverContent.outputTranscription && serverContent.outputTranscription.text;
+                    if (hasInputText || hasOutputText) {
+                        // console.log("[DEBUG] serverContent object:", serverContent);
+                    }
+
+                    // Source (user input) transcription text
+                    if (route.id === 'leftToRight' && serverContent.inputTranscription && serverContent.inputTranscription.text) {
+                        const newInputText = getNewTranscriptionText(serverContent.inputTranscription.text);
+                        if (newInputText.trim()) {
+                            // Perform high-accuracy client-side text-based language detection to bypass Gemini's translation-mode language sticky/bias bug
+                            const detectedLang = detectLanguageFromText(newInputText, leftLangCode, rightLangCode);
+                            activateRouteForLanguage(detectedLang);
+                            updateChatBubble(newInputText, 'user', detectedLang);
+                        }
+                    }
+
+                    if (shouldAcceptRoute(route)) {
+                        // Play target language audio only from the currently detected translation direction
+                        const parts = serverContent.modelTurn?.parts;
+                        if (parts) {
+                            for (const part of parts) {
+                                if (part.inlineData && part.inlineData.data) {
+                                    queuePcmChunk(part.inlineData.data);
+                                }
+                            }
+                        }
+
+                        // Target (translated model output) transcription text
+                        if (serverContent.outputTranscription && serverContent.outputTranscription.text) {
+                            updateChatBubble(serverContent.outputTranscription.text, 'model', route.targetLangCode);
+                        }
+                    }
+
+                    if (route.id === 'leftToRight' && serverContent.turnComplete) {
+                        lastInputTranscriptionText = "";
+                    }
+
+                    // When a turn is complete, clear active bubble cache
+                    if (shouldAcceptRoute(route) && serverContent.turnComplete) {
+                        console.log("[DEBUG] serverContent.turnComplete is TRUE!");
+                        activeBubbleContainer = null;
+                        activeOriginalTextElement = null;
+                        activeTranslatedTextElement = null;
+                        scheduleTtsPlaybackAfterSilence();
+                    }
+                }
+            } catch (err) {
+                console.error("Error parsing server message:", err);
+            }
+        }
+
+        // Play PCM audio chunk
+        function queuePcmChunk(base64Audio) {
+            if (!base64Audio) return;
+            const decodedAudio = decodePcmChunk(base64Audio);
+            const trimmedAudio = trimPcmSilence(decodedAudio, TTS_SILENCE_THRESHOLD, TTS_SILENCE_PADDING_SAMPLES);
+            if (!trimmedAudio) return;
+
+            pendingTtsChunks.push(trimmedAudio);
+            // console.log(`[DEBUG] queued TTS audio chunk. pending=${pendingTtsChunks.length}`);
+
+            if (isTtsPlaying) return;
+            scheduleTtsPlaybackAfterSilence();
+        }
+
+        function scheduleTtsPlaybackAfterSilence() {
+            if (isTtsPlaying || pendingTtsChunks.length === 0) return;
+
+            if (ttsPlaybackDelayTimer) {
+                clearTimeout(ttsPlaybackDelayTimer);
+            }
+
+            ttsPlaybackDelayTimer = setTimeout(() => {
+                ttsPlaybackDelayTimer = null;
+                // console.log("[DEBUG] TTS silence delay reached. Starting playback.");
+                playPendingTtsChunks();
+            }, TTS_FALLBACK_PLAYBACK_DELAY_MS);
+        }
+
+        async function playPendingTtsChunks() {
+            if (!playbackWorkletNode) return;
+            if (pendingTtsChunks.length === 0) return;
+            if (isTtsPlaying) return;
+
+            if (ttsPlaybackDelayTimer) {
+                clearTimeout(ttsPlaybackDelayTimer);
+                ttsPlaybackDelayTimer = null;
+            }
+
+            if (outputAudioContext && outputAudioContext.state !== 'running') {
+                await outputAudioContext.resume();
+            }
+
+            const chunksToPlay = pendingTtsChunks;
+            pendingTtsChunks = [];
+
+            isTtsPlaying = true;
+            setUISpeaking();
+            // console.log(`[DEBUG] playing TTS audio chunks=${chunksToPlay.length}`);
+
+            let totalSamples = 0;
+            const playbackSampleRate = outputAudioContext?.sampleRate || RECEIVE_SAMPLE_RATE;
+            playbackWorkletNode.port.postMessage("interrupt");
+
+            for (const float32Array of chunksToPlay) {
+                const playableAudio = resampleAudio(float32Array, RECEIVE_SAMPLE_RATE, playbackSampleRate);
+                totalSamples += playableAudio.length;
+                playbackWorkletNode.port.postMessage(playableAudio);
+            }
+
+            if (ttsPlaybackFinishTimer) {
+                clearTimeout(ttsPlaybackFinishTimer);
+            }
+
+            const playbackMs = Math.ceil((totalSamples / playbackSampleRate) * 1000) + 250;
+            // console.log(`[DEBUG] estimated TTS playback duration=${playbackMs}ms`);
+            ttsPlaybackFinishTimer = setTimeout(() => {
+                ttsPlaybackFinishTimer = null;
+                if (isConnected) {
+                    if (pendingTtsChunks.length > 0) {
+                        isTtsPlaying = false;
+                        ttsPlaybackDelayTimer = setTimeout(() => {
+                            ttsPlaybackDelayTimer = null;
+                            playPendingTtsChunks();
+                        }, 300);
+                    } else {
+                        isTtsPlaying = false;
+                        activeTranslationRouteId = "";
+                        setUIConnected();
+                    }
+                }
+            }, Math.max(playbackMs, 500));
+        }
+
+        function decodePcmChunk(base64Audio) {
+            const binaryString = atob(base64Audio);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            const int16Array = new Int16Array(bytes.buffer);
+            const float32Array = new Float32Array(int16Array.length);
+            for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / 32768;
+            }
+
+            return float32Array;
+        }
+
+        function trimPcmSilence(input, threshold, paddingSamples) {
+            if (!input || input.length === 0) return null;
+
+            let start = 0;
+            while (start < input.length && Math.abs(input[start]) < threshold) {
+                start++;
+            }
+
+            if (start >= input.length) return null;
+
+            let end = input.length - 1;
+            while (end > start && Math.abs(input[end]) < threshold) {
+                end--;
+            }
+
+            const paddedStart = Math.max(0, start - paddingSamples);
+            const paddedEnd = Math.min(input.length - 1, end + paddingSamples);
+            return input.slice(paddedStart, paddedEnd + 1);
+        }
+
+        function resampleAudio(input, fromRate, toRate) {
+            if (!input || input.length === 0 || fromRate === toRate) return input;
+
+            const ratio = fromRate / toRate;
+            const outputLength = Math.max(1, Math.round(input.length / ratio));
+            const output = new Float32Array(outputLength);
+
+            for (let i = 0; i < outputLength; i++) {
+                const sourceIndex = i * ratio;
+                const index = Math.floor(sourceIndex);
+                const fraction = sourceIndex - index;
+                const current = input[index] || 0;
+                const next = input[Math.min(index + 1, input.length - 1)] || current;
+                output[i] = current + (next - current) * fraction;
+            }
+
+            return output;
+        }
+
+        // Render Transcript Bubbles (KakaoTalk Style)
+        function updateChatBubble(text, speaker, langCode) {
+            // Remove placeholder on first message
+            if (chatPlaceholder) {
+                chatPlaceholder.remove();
+            }
+
+            // If user speaker language changes, reset active bubble container to start a new turn in a new bubble
+            if (speaker === 'user' && activeBubbleContainer && !matchLanguage(langCode, activeBubbleLangCode)) {
+                console.log(`[DEBUG] Speaker language changed from ${activeBubbleLangCode} to ${langCode}. Resetting active bubble.`);
+                activeBubbleContainer = null;
+                activeOriginalTextElement = null;
+                activeTranslatedTextElement = null;
+                activeBubbleLangCode = "";
+            }
+
+            // If we don't have an active bubble for the current turn, create one
+            if (!activeBubbleContainer) {
+                // Determine whether this turn belongs to the Left side or Right side
+                // Left represents leftLangCode (initial From), Right represents rightLangCode (initial To)
+                const isLeft = matchLanguage(langCode, leftLangCode);
+                const sideClass = isLeft ? 'left' : 'right';
+
+                activeBubbleLangCode = langCode;
+
+                const row = document.createElement('div');
+                row.className = `kakao-row ${sideClass}`;
+
+                const col = document.createElement('div');
+                col.className = 'kakao-content-col';
+
+                // For Left side, show avatar and speaker name
+                if (isLeft) {
+                    const avatar = document.createElement('div');
+                    avatar.className = 'kakao-avatar';
+                    avatar.textContent = langCode.toUpperCase();
+                    row.appendChild(avatar);
+
+                    const name = document.createElement('div');
+                    name.className = 'kakao-speaker-name';
+                    name.textContent = leftLangName;
+                    col.appendChild(name);
+                } else {
+                    // For Right side, show name aligned to right
+                    const name = document.createElement('div');
+                    name.className = 'kakao-speaker-name';
+                    name.style.alignSelf = 'flex-end';
+                    name.textContent = rightLangName;
+                    col.appendChild(name);
+                }
+
+                const bubble = document.createElement('div');
+                bubble.className = 'kakao-bubble';
+
+                const origPara = document.createElement('div');
+                origPara.className = 'kakao-text-original';
+                bubble.appendChild(origPara);
+
+                const transPara = document.createElement('div');
+                transPara.className = 'kakao-text-translated';
+                transPara.style.display = 'none'; // Hidden until translation text arrives
+                bubble.appendChild(transPara);
+
+                col.appendChild(bubble);
+                row.appendChild(col);
+                chatHistory.appendChild(row);
+
+                // Cache elements for this turn
+                activeBubbleContainer = row;
+                activeOriginalTextElement = origPara;
+                activeTranslatedTextElement = transPara;
+            }
+
+            // Append text to the correct element
+            if (speaker === 'user') {
+                // Spoken original text
+                activeOriginalTextElement.textContent += text;
+            } else if (speaker === 'model') {
+                // Translated output text
+                activeTranslatedTextElement.style.display = 'block';
+                activeTranslatedTextElement.textContent += text;
+            }
+
+            scrollChatToBottom();
+        }
+
+        // Helper: float32 -> PCM 16-bit
+        function convertToPCM16(float32Array) {
+            const buffer = new ArrayBuffer(float32Array.length * 2);
+            const view = new DataView(buffer);
+            for (let i = 0; i < float32Array.length; i++) {
+                const s = Math.max(-1, Math.min(1, float32Array[i]));
+                view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+            return buffer;
+        }
+
+        // Helper: ArrayBuffer -> Base64
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = "";
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        // Volume Control Listener
+        fontSizeControl.addEventListener('input', (e) => {
+            document.documentElement.style.setProperty('--chat-font-size', `${e.target.value}px`);
+            scrollChatToBottom();
+        });
+
+        volumeControl.addEventListener('input', (e) => {
+            const vol = parseFloat(e.target.value);
+            if (gainNode) {
+                gainNode.gain.value = vol;
+            }
+        });
+
+        // ===== UI State Modifiers =====
+        function setUIConnecting() {
+            startBtn.disabled = true;
+            statusBadge.className = "status-badge";
+            statusText.textContent = "Connecting...";
+            statusBadge.title = "Connecting";
+            actionPrompt.textContent = "Connecting to the secure realtime service...";
+        }
+
+        function setUIConnected() {
+            startBtn.disabled = false;
+            statusBadge.className = "status-badge listening";
+            statusText.textContent = "Live";
+            statusBadge.title = "Stop session";
+
+            const sourceLangName = activeFromLangCode === leftLangCode ? leftLangName : rightLangName;
+            const targetLangName = activeToLangCode === leftLangCode ? leftLangName : rightLangName;
+            actionPrompt.textContent = `Live interpretation: ${sourceLangName} ⇄ ${targetLangName}`;
+        }
+
+        function setUISpeaking() {
+            startBtn.disabled = false;
+            statusBadge.className = "status-badge speaking";
+            statusText.textContent = "TTS Playing";
+            statusBadge.title = "TTS playing";
+            actionPrompt.textContent = "Playing interpreted audio.";
+        }
+
+        function setUIDisconnected() {
+            startBtn.disabled = false;
+            statusBadge.className = "status-badge";
+            statusText.textContent = "Disconnected";
+            statusBadge.title = "Start session";
+            actionPrompt.textContent = "Session ended. Press the status button to start.";
+            visualizerOverlay.style.display = 'flex';
+            visualizerOverlay.textContent = 'Offline';
+        }
+
+        function setUIError(msg) {
+            startBtn.disabled = false;
+            statusBadge.className = "status-badge error-state";
+            statusText.textContent = "Error";
+            statusBadge.title = "Start session";
+            actionPrompt.textContent = msg;
+            visualizerOverlay.style.display = 'flex';
+            visualizerOverlay.textContent = 'Error';
+        }
+
+        // ===== Canvas Visualizer =====
+        function startVisualizer() {
+            if (!canvas || !canvas.parentElement) return;
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                if (!analyser) return;
+                drawVisualId = requestAnimationFrame(draw);
+
+                analyser.getByteTimeDomainData(dataArray);
+
+                canvasCtx.fillStyle = '#090d16';
+                canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+                canvasCtx.lineWidth = 2.5;
+                // Cyan/Purple gradient line
+                const gradient = canvasCtx.createLinearGradient(0, 0, canvas.width, 0);
+                gradient.addColorStop(0, '#06b6d4');
+                gradient.addColorStop(0.5, '#8b5cf6');
+                gradient.addColorStop(1, '#06b6d4');
+                canvasCtx.strokeStyle = gradient;
+
+                canvasCtx.beginPath();
+
+                const sliceWidth = canvas.width * 1.0 / bufferLength;
+                let x = 0;
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = v * canvas.height / 2;
+
+                    if (i === 0) {
+                        canvasCtx.moveTo(x, y);
+                    } else {
+                        canvasCtx.lineTo(x, y);
+                    }
+
+                    x += sliceWidth;
+                }
+
+                canvasCtx.lineTo(canvas.width, canvas.height / 2);
+                canvasCtx.stroke();
+            }
+
+            draw();
+        }
+
+        function stopVisualizer() {
+            if (drawVisualId) {
+                cancelAnimationFrame(drawVisualId);
+                drawVisualId = null;
+            }
+            if (canvasCtx && canvas) {
+                canvasCtx.fillStyle = '#090d16';
+                canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // Adjust canvas resolution on window resize
+        window.addEventListener('resize', () => {
+            if (analyser && canvas && canvas.parentElement) {
+                canvas.width = canvas.parentElement.clientWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+            }
+        });
+    </script>
+</body>
+
+</html>
