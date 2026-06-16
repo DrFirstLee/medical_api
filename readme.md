@@ -20,6 +20,8 @@
 docker-compose up --build -d
 ```
 
+docker restart swift_fastapi_server
+
 ---
 
 ## 🔗 외부 접속 주소 확인

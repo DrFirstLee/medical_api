@@ -814,6 +814,7 @@
         const TTS_FALLBACK_PLAYBACK_DELAY_MS = 550;
         const TTS_SILENCE_THRESHOLD = 0.003;
         const TTS_SILENCE_PADDING_SAMPLES = 120;
+        const ENABLE_REVERSE_SOCKET = true;
 
         // UI Elements
         const statusBadge = document.getElementById('statusBadge');
@@ -843,7 +844,7 @@
         let activeFromLangCode = "";
         let activeToLangCode = "";
         let activeTranslationRouteId = "";
-        let lastInputTranscriptionText = "";
+        let lastInputTranscriptionTextByRoute = {};
         let activeBubbleLangCode = "";
         let audioContext = null;
         let outputAudioContext = null;
@@ -1161,7 +1162,7 @@
             activeOriginalTextElement = null;
             activeTranslatedTextElement = null;
             activeTranslationRouteId = "";
-            lastInputTranscriptionText = "";
+            lastInputTranscriptionTextByRoute = {};
             activeBubbleLangCode = "";
 
             stopVisualizer();
@@ -1236,55 +1237,75 @@
             const cleanText = text.trim();
             if (cleanText.length === 0) return null;
 
-            const hasHangul = /[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]/i.test(cleanText);
-            const hasKana = /[\u3040-\u309f\u30a0-\u30ff]/i.test(cleanText);
-            const hasKanji = /[\u4e00-\u9fa5]/.test(cleanText);
+            const lowerText = cleanText.toLowerCase();
+            const words = lowerText.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+            const countMatches = (regex) => (cleanText.match(regex) || []).length;
 
-            let textScript = 'latin';
-            if (hasHangul) textScript = 'hangul';
-            else if (hasKana) textScript = 'kana';
-            else if (hasKanji) textScript = 'kanji';
-
-            const getScript = (lang) => {
-                const l = lang.toLowerCase();
-                if (l.startsWith('ko')) return 'hangul';
-                if (l.startsWith('ja')) return 'kana';
-                if (l.startsWith('zh')) return 'kanji';
-                return 'latin';
+            const scriptCounts = {
+                hangul: countMatches(/[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]/g),
+                kana: countMatches(/[\u3040-\u309f\u30a0-\u30ff]/g),
+                han: countMatches(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g),
+                latin: countMatches(/[a-zA-Z]/g)
             };
 
-            const scriptA = getScript(langA);
-            const scriptB = getScript(langB);
+            const englishWords = new Set(['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me', 'pain', 'doctor', 'medicine', 'hospital', 'today', 'yesterday']);
+            const spanishWords = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'y', 'en', 'que', 'de', 'es', 'esta', 'como', 'con', 'para', 'por', 'lo', 'se', 'su', 'al', 'del', 'no', 'si', 'pero', 'mas', 'o', 'mi', 'tu', 'yo', 'me', 'le', 'nos', 'les', 'dolor', 'medico', 'hospital']);
+            const frenchWords = new Set(['le', 'la', 'les', 'et', 'en', 'que', 'de', 'est', 'une', 'dans', 'pour', 'qui', 'ce', 'sur', 'avec', 'plus', 'tout', 'par', 'pas', 'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles', 'un', 'aux', 'douleur', 'medecin', 'hopital']);
+            const germanWords = new Set(['der', 'die', 'das', 'und', 'ist', 'in', 'zu', 'den', 'von', 'mit', 'auf', 'fur', 'war', 'sich', 'sie', 'es', 'ich', 'wir', 'ihr', 'du', 'er', 'nicht', 'auch', 'wie', 'an', 'als', 'schmerz', 'arzt', 'krankenhaus']);
 
-            if (scriptA !== scriptB) {
-                if (textScript === scriptA) return langA;
-                if (textScript === scriptB) return langB;
-                if (textScript === 'hangul') return 'ko';
-                if (textScript === 'kana') return 'ja';
-                if (textScript === 'kanji') return 'zh';
-                if (scriptA === 'latin') return langA;
-                if (scriptB === 'latin') return langB;
-            }
+            const wordScore = (wordSet) => words.reduce((score, word) => score + (wordSet.has(word) ? 1 : 0), 0);
+            const phraseScore = (phrases) => phrases.reduce((score, phrase) => score + (cleanText.includes(phrase) ? 1 : 0), 0);
+            const normalizeLang = (lang) => (lang || '').toLowerCase();
 
-            const words = cleanText.toLowerCase().split(/\s+/);
-            const englishWords = new Set(['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me']);
-            const spanishWords = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'y', 'en', 'que', 'de', 'es', 'esta', 'como', 'con', 'para', 'por', 'lo', 'se', 'su', 'al', 'del', 'no', 'si', 'pero', 'mas', 'o', 'mi', 'tu', 'su', 'yo', 'me', 'le', 'nos', 'les']);
-            const frenchWords = new Set(['le', 'la', 'les', 'et', 'en', 'que', 'de', 'est', 'une', 'dans', 'pour', 'qui', 'ce', 'dans', 'sur', 'avec', 'plus', 'tout', 'par', 'pas', 'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles', 'un', 'aux']);
-            const germanWords = new Set(['der', 'die', 'das', 'und', 'ist', 'in', 'zu', 'den', 'von', 'mit', 'auf', 'für', 'ist', 'war', 'sich', 'sie', 'es', 'ich', 'wir', 'ihr', 'du', 'er', 'nicht', 'mit', 'auch', 'wie', 'an', 'als']);
-
-            const getScore = (wordSet) => {
+            const scoreLanguage = (lang) => {
+                const normalizedLang = normalizeLang(lang);
                 let score = 0;
-                for (const word of words) {
-                    if (wordSet.has(word)) score++;
+
+                if (normalizedLang.startsWith('ko')) {
+                    score += scriptCounts.hangul * 6;
+                    score += phraseScore(['은', '는', '이', '가', '을', '를', '요', '니다', '아파', '통증', '약', '병원']) * 3;
+                    score -= scriptCounts.kana * 6;
+                    score -= scriptCounts.han * 1.5;
+                } else if (normalizedLang.startsWith('zh')) {
+                    score += scriptCounts.han * 6;
+                    score += phraseScore(['我', '你', '他', '她', '是', '的', '了', '不', '有', '在', '吗', '医生', '疼', '痛', '药', '医院']) * 4;
+                    score -= scriptCounts.hangul * 6;
+                    score -= scriptCounts.kana * 6;
+                } else if (normalizedLang.startsWith('ja')) {
+                    score += scriptCounts.kana * 8;
+                    score += scriptCounts.han * 2;
+                    score += phraseScore(['です', 'ます', 'の', 'は', 'を', 'に', '医者', '痛い', '薬', '病院']) * 4;
+                    score -= scriptCounts.hangul * 6;
+                } else if (normalizedLang.startsWith('es')) {
+                    score += scriptCounts.latin * 0.5;
+                    score += wordScore(spanishWords) * 4;
+                    score += /[áéíóúñ¿¡]/i.test(cleanText) ? 4 : 0;
+                } else if (normalizedLang.startsWith('fr')) {
+                    score += scriptCounts.latin * 0.5;
+                    score += wordScore(frenchWords) * 4;
+                    score += /[àâçéèêëîïôûùüÿœ]/i.test(cleanText) ? 4 : 0;
+                } else if (normalizedLang.startsWith('de')) {
+                    score += scriptCounts.latin * 0.5;
+                    score += wordScore(germanWords) * 4;
+                    score += /[äöüß]/i.test(cleanText) ? 4 : 0;
+                } else if (normalizedLang.startsWith('en')) {
+                    score += scriptCounts.latin * 0.5;
+                    score += wordScore(englishWords) * 4;
                 }
+
                 return score;
             };
 
-            const scoreA = getScore(langA.startsWith('es') ? spanishWords : langA.startsWith('fr') ? frenchWords : langA.startsWith('de') ? germanWords : englishWords);
-            const scoreB = getScore(langB.startsWith('es') ? spanishWords : langB.startsWith('fr') ? frenchWords : langB.startsWith('de') ? germanWords : englishWords);
+            const scoreA = scoreLanguage(langA);
+            const scoreB = scoreLanguage(langB);
 
             if (scoreA > scoreB) return langA;
             if (scoreB > scoreA) return langB;
+
+            if (scriptCounts.hangul > 0) return matchLanguage('ko', langA) ? langA : matchLanguage('ko', langB) ? langB : 'ko';
+            if (scriptCounts.kana > 0) return matchLanguage('ja', langA) ? langA : matchLanguage('ja', langB) ? langB : 'ja';
+            if (scriptCounts.han > 0) return matchLanguage('zh', langA) ? langA : matchLanguage('zh', langB) ? langB : 'zh';
+            if (scriptCounts.latin > 0) return matchLanguage('en', langA) ? langA : matchLanguage('en', langB) ? langB : langA;
 
             return langA;
         }
@@ -1334,10 +1355,10 @@
             return activeTranslationRouteId === route.id;
         }
 
-        function getNewTranscriptionText(currentText) {
+        function getNewTranscriptionText(routeId, currentText) {
             const current = currentText || "";
-            const previous = lastInputTranscriptionText || "";
-            lastInputTranscriptionText = current;
+            const previous = lastInputTranscriptionTextByRoute[routeId] || "";
+            lastInputTranscriptionTextByRoute[routeId] = current;
 
             if (!previous) return current;
             if (current.startsWith(previous)) return current.slice(previous.length);
@@ -1381,7 +1402,11 @@
 
             const routes = getTranslationRoutes();
             connectWebSocket(key, routes.leftToRight);
-            connectWebSocket(key, routes.rightToLeft);
+            if (ENABLE_REVERSE_SOCKET) {
+                connectWebSocket(key, routes.rightToLeft);
+            } else {
+                console.warn("Reverse WebSocket disabled for testing.");
+            }
         }
 
         async function connectWebSocket(key, route) {
@@ -1445,7 +1470,7 @@
 
                     // Source (user input) transcription text
                     if (route.id === 'leftToRight' && serverContent.inputTranscription && serverContent.inputTranscription.text) {
-                        const newInputText = getNewTranscriptionText(serverContent.inputTranscription.text);
+                        const newInputText = getNewTranscriptionText(route.id, serverContent.inputTranscription.text);
                         if (newInputText.trim()) {
                             // Perform high-accuracy client-side text-based language detection to bypass Gemini's translation-mode language sticky/bias bug
                             const detectedLang = detectLanguageFromText(newInputText, leftLangCode, rightLangCode);
@@ -1472,7 +1497,7 @@
                     }
 
                     if (route.id === 'leftToRight' && serverContent.turnComplete) {
-                        lastInputTranscriptionText = "";
+                        lastInputTranscriptionTextByRoute[route.id] = "";
                     }
 
                     // When a turn is complete, clear active bubble cache
